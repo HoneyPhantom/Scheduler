@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>UniScheduler Pro | Multi-College</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .cancelled-class { background-color: #fee2e2 !important; color: #991b1b !important; position: relative; overflow: hidden; }
+        .cancelled-class::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #ef4444; transform: rotate(-5deg); z-index: 1; }
+        .active-slot { border: 2px solid #6366f1; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col">
+
+    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-40">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3 cursor-pointer" onclick="App.route('gatekeeper')">
+                <div class="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center font-bold">U</div>
+                <h1 class="font-bold tracking-tight hidden sm:block">UniScheduler</h1>
+            </div>
+            <div id="header-college-info" class="hidden flex items-center gap-4">
+                <div class="text-right leading-tight">
+                    <div id="clock-display" class="font-mono text-lg font-bold text-indigo-400">00:00</div>
+                    <div id="active-college-tag" class="text-[10px] bg-indigo-900 px-2 py-0.5 rounded text-indigo-200 uppercase tracking-widest font-bold">COLLEGE</div>
+                </div>
+                <button onclick="Actions.logout()" class="p-2 bg-slate-800 rounded-full hover:bg-red-900 transition">退出</button>
+            </div>
+        </div>
+    </header>
+
+    <main id="app" class="flex-grow container mx-auto px-4 py-6 fade-in"></main>
+
+    <div id="dev-tools" class="fixed bottom-4 left-4 bg-white p-3 rounded-lg shadow-xl border border-slate-300 z-50 text-xs w-56 hidden">
+        <div class="font-bold text-slate-700 border-b pb-1 mb-2">🔧 Simulation Tools</div>
+        <div class="flex items-center justify-between mb-2">
+            <span>Override Time:</span>
+            <input type="checkbox" id="debug-toggle" onchange="App.toggleDebug()">
+        </div>
+        <div id="debug-controls" class="hidden space-y-2">
+            <select id="debug-day" onchange="App.render()" class="w-full border p-1 rounded">
+                <option value="Monday">Monday</option><option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+            </select>
+            <input type="time" id="debug-time" onchange="App.render()" value="09:00" class="w-full border p-1 rounded">
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIG & CONSTANTS ---
+        const CONFIG = {
+            days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+            slots: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00']
+        };
+
+        // --- MULTI-TENANT DB SYSTEM ---
+        const DB = {
+            getAll: () => JSON.parse(localStorage.getItem('uni_multiverse') || '{}'),
+            saveAll: (data) => localStorage.setItem('uni_multiverse', JSON.stringify(data)),
+            
+            getCollege: (name) => DB.getAll()[name],
+            
+            updateCollege: (name, fn) => {
+                const all = DB.getAll();
+                if(all[name]) {
+                    fn(all[name]);
+                    DB.saveAll(all);
+                    App.render();
+                }
+            }
+        };
+
+        // --- TIME ENGINE ---
+        const Time = {
+            isDebug: false,
+            getCurrent: () => {
+                if (Time.isDebug) {
+                    const d = document.getElementById('debug-day').value;
+                    const t = document.getElementById('debug-time').value;
+                    return { day: d, time: t, dayIndex: CONFIG.days.indexOf(d) };
+                }
+                const now = new Date();
+                return { 
+                    day: now.toLocaleDateString('en-US', { weekday: 'long' }), 
+                    time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+                    dayIndex: now.getDay() - 1 
+                };
+            },
+            getStatus: (slotDay, slotTime) => {
+                const now = Time.getCurrent();
+                const slotDayIdx = CONFIG.days.indexOf(slotDay);
+                if (now.dayIndex < 0 || now.dayIndex > 4) return 'future';
+                if (slotDayIdx < now.dayIndex) return 'past';
+                if (slotDayIdx > now.dayIndex) return 'future';
+                if (slotTime < now.time) return 'past';
+                if (slotTime === now.time) return 'active';
+                return 'future';
+            }
+        };
+
+        // --- APP STATE & ROUTING ---
+        const App = {
+            college: localStorage.getItem('active_college'),
+            view: 'gatekeeper',
+            user: JSON.parse(localStorage.getItem('active_user') || 'null'),
+            activeSection: null,
+
+            init: () => {
+                if(App.college) { 
+                    App.view = 'home';
+                    document.getElementById('dev-tools').classList.remove('hidden');
+                }
+                
+                setInterval(() => {
+                    const now = Time.getCurrent();
+                    document.getElementById('clock-display').innerText = now.time;
+                }, 1000);
+                
+                App.render();
+            },
+
+            route: (v) => { App.view = v; App.render(); },
+            
+            toggleDebug: () => {
+                Time.isDebug = document.getElementById('debug-toggle').checked;
+                document.getElementById('debug-controls').classList.toggle('hidden');
+                App.render();
+            },
+
+            render: () => {
+                const container = document.getElementById('app');
+                const headerInfo = document.getElementById('header-college-info');
+                
+                if (App.college) {
+                    headerInfo.classList.remove('hidden');
+                    document.getElementById('active-college-tag').innerText = App.college;
+                } else {
+                    headerInfo.classList.add('hidden');
+                }
+
+                const collegeData = DB.getCollege(App.college);
+
+                switch(App.view) {
+                    case 'gatekeeper': container.innerHTML = Views.gatekeeper(); break;
+                    case 'home': container.innerHTML = Views.home(); break;
+                    case 'admin': container.innerHTML = Views.admin(collegeData); break;
+                    case 'teacher': container.innerHTML = Views.teacher(collegeData); break;
+                    case 'student': container.innerHTML = Views.student(collegeData); break;
+                }
+            }
+        };
+
+        // --- VIEWS ---
+        const Views = {
+            gatekeeper: () => `
+                <div class="max-w-md mx-auto bg-white p-8 rounded-2xl shadow-xl mt-10">
+                    <h2 class="text-2xl font-bold mb-6 text-center text-slate-800">College Portal</h2>
+                    <div class="space-y-4">
+                        <input id="join-name" type="text" placeholder="College Name" class="w-full border p-3 rounded-lg">
+                        <button onclick="Actions.enterCollege()" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold">Enter College</button>
+                        <div class="text-center text-xs text-slate-400 py-2">OR</div>
+                        <button onclick="Actions.registerCollege()" class="w-full border-2 border-indigo-600 text-indigo-600 py-3 rounded-lg font-bold">Register New College</button>
+                    </div>
+                </div>
+            `,
+
+            home: () => `
+                <div class="max-w-4xl mx-auto grid md:grid-cols-3 gap-6 mt-10">
+                    <div onclick="Actions.loginRole('admin')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
+                        <div class="text-4xl mb-4">🛠️</div>
+                        <h2 class="text-xl font-bold">Administrator</h2>
+                        <p class="text-slate-500 text-sm mt-1">Manage sections & schedules</p>
+                    </div>
+                    <div onclick="Actions.loginRole('teacher')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
+                        <div class="text-4xl mb-4">👨‍🏫</div>
+                        <h2 class="text-xl font-bold">Teacher</h2>
+                        <p class="text-slate-500 text-sm mt-1">Cancel classes & add notes</p>
+                    </div>
+                    <div onclick="Actions.loginRole('student')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
+                        <div class="text-4xl mb-4">🎒</div>
+                        <h2 class="text-xl font-bold">Student</h2>
+                        <p class="text-slate-500 text-sm mt-1">View schedule & attendance</p>
+                    </div>
+                </div>
+            `,
+
+            admin: (data) => `
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold text-slate-800">Admin Panel: ${App.college}</h2>
+                        <button onclick="App.route('home')" class="text-indigo-600 font-bold">Exit Editor</button>
+                    </div>
+                    <div class="grid md:grid-cols-4 gap-6">
+                        <div class="bg-white p-4 rounded-xl shadow h-fit">
+                            <h3 class="font-bold text-xs uppercase text-slate-400 mb-4">Sections</h3>
+                            <div class="space-y-2">
+                                ${data.sections.map(s => `
+                                    <div onclick="App.activeSection='${s}'; App.render()" class="p-3 rounded cursor-pointer border ${App.activeSection === s ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-transparent hover:bg-slate-50'}">
+                                        ${s}
+                                    </div>
+                                `).join('')}
+                                <button onclick="Actions.addSection()" class="w-full py-2 border-2 border-dashed rounded text-slate-400 hover:text-indigo-500">+ Section</button>
+                            </div>
+                        </div>
+                        <div class="md:col-span-3 bg-white rounded-xl shadow overflow-x-auto">
+                            ${App.activeSection ? Views.timetableEditor(data, App.activeSection) : '<div class="p-20 text-center text-slate-300">Select a section to manage schedule</div>'}
+                        </div>
+                    </div>
+                </div>
+            `,
+
+            timetableEditor: (data, section) => `
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 text-slate-500">
+                        <tr><th class="p-4">Day</th>${CONFIG.slots.map(s => `<th class="p-4 border-l">${s}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                        ${CONFIG.days.map(day => `
+                            <tr class="border-t">
+                                <td class="p-4 font-bold text-slate-400">${day.substring(0,3)}</td>
+                                ${CONFIG.slots.map(slot => {
+                                    const id = `${section}-${day}-${slot}`;
+                                    const cell = data.schedule[id] || { subject: '', teacher: '' };
+                                    return `
+                                        <td class="p-2 border-l">
+                                            <input type="text" value="${cell.subject}" placeholder="Subj" class="w-full text-xs font-bold focus:outline-none" onchange="Actions.updateCell('${id}', 'subject', this.value)">
+                                            <input type="text" value="${cell.teacher}" placeholder="Teacher" class="w-full text-[10px] text-slate-400 focus:outline-none" onchange="Actions.updateCell('${id}', 'teacher', this.value)">
+                                        </td>
+                                    `;
+                                }).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `,
+
+            teacher: (data) => `
+                <div class="max-w-4xl mx-auto">
+                    <div class="mb-6 flex justify-between items-center">
+                        <h2 class="text-2xl font-bold">Teacher: ${App.user.name}</h2>
+                        <button onclick="App.route('home')" class="text-slate-500 underline">Logout</button>
+                    </div>
+                    <div class="bg-indigo-50 p-3 rounded mb-4 text-xs text-indigo-700">💡 <b>Click</b> to Cancel | <b>Long Press</b> for Notes</div>
+                    <div class="bg-white rounded-xl shadow overflow-hidden grid grid-cols-6 border">
+                        <div class="p-4 bg-slate-50 border-b border-r font-bold text-xs text-slate-400">TIME</div>
+                        ${CONFIG.days.map(d => `<div class="p-4 bg-slate-50 border-b border-r font-bold text-center">${d.substring(0,3)}</div>`).join('')}
+                        ${CONFIG.slots.map(slot => `
+                            <div class="p-4 border-b border-r bg-slate-50 text-center text-xs font-bold text-slate-400">${slot}</div>
+                            ${CONFIG.days.map(day => {
+                                let matchId = null, matchData = null, matchSec = null;
+                                data.sections.forEach(sec => {
+                                    const id = `${sec}-${day}-${slot}`;
+                                    if(data.schedule[id]?.teacher === App.user.name) { matchId = id; matchData = data.schedule[id]; matchSec = sec; }
+                                });
+                                if(!matchId) return `<div class="border-b border-r bg-slate-50/30"></div>`;
+                                return `
+                                    <div class="p-2 border-b border-r relative cursor-pointer select-none transition hover:bg-indigo-50 ${data.cancelled[matchId] ? 'cancelled-class' : ''}"
+                                         onmousedown="Interaction.start('${matchId}')" ontouchstart="Interaction.start('${matchId}')"
+                                         onmouseup="Interaction.end()" onmouseleave="Interaction.end()">
+                                        <div class="text-[10px] font-bold text-indigo-500">${matchSec}</div>
+                                        <div class="text-xs font-bold leading-tight">${matchData.subject}</div>
+                                        ${data.notes[matchId] ? '<div class="absolute bottom-1 right-1">📝</div>' : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        `).join('')}
+                    </div>
+                </div>
+            `,
+
+            student: (data) => {
+                const sKey = `${App.user.section}-${App.user.roll}`;
+                let next = null, total = 0, attended = 0;
+                
+                const list = [];
+                CONFIG.days.forEach(day => {
+                    CONFIG.slots.forEach(slot => {
+                        const id = `${App.user.section}-${day}-${slot}`;
+                        if(data.schedule[id]) {
+                            const status = Time.getStatus(day, slot);
+                            const item = { ...data.schedule[id], id, day, slot, status, 
+                                isCancelled: !!data.cancelled[id], 
+                                isAttended: !!(data.attendance[sKey] && data.attendance[sKey][id]),
+                                note: data.notes[id]
+                            };
+                            list.push(item);
+                            if(status === 'past' && !item.isCancelled) {
+                                total++;
+                                if(item.isAttended) attended++;
+                            }
+                            if(!next && (status === 'active' || status === 'future') && !item.isCancelled) next = item;
+                        }
+                    });
+                });
+                const pct = total === 0 ? 0 : Math.round((attended/total)*100);
+
+                return `
+                <div class="max-w-md mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <div><h2 class="text-2xl font-bold">Student Portal</h2><p class="text-slate-500">${App.user.section} | Roll ${App.user.roll}</p></div>
+                        <button onclick="App.route('home')" class="text-slate-400">Logout</button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4 mb-6">
+                        <div class="bg-white p-4 rounded-xl shadow border-l-4 border-indigo-500">
+                            <div class="text-[10px] uppercase font-bold text-slate-400">Attendance</div>
+                            <div class="text-2xl font-bold text-indigo-600">${pct}%</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow border-l-4 border-orange-400">
+                            <div class="text-[10px] uppercase font-bold text-slate-400">Total Past</div>
+                            <div class="text-2xl font-bold">${total}</div>
+                        </div>
+                    </div>
+                    ${next ? `<div class="bg-slate-900 text-white p-4 rounded-xl mb-6 shadow-xl">
+                        <div class="text-xs text-indigo-400 font-bold mb-1">NEXT CLASS</div>
+                        <div class="text-lg font-bold">${next.subject}</div>
+                        <div class="text-sm opacity-70">${next.day} @ ${next.slot} | ${next.teacher}</div>
+                    </div>` : ''}
+                    <div class="space-y-3">
+                        ${list.map(c => `
+                            <div onclick="${c.status !== 'future' ? `Actions.markAtt('${sKey}','${c.id}')` : ''}" 
+                                 class="bg-white p-4 rounded-xl shadow flex justify-between items-center border ${c.isCancelled ? 'cancelled-class' : ''} ${c.status === 'active' ? 'active-slot' : ''} ${c.isAttended ? 'border-green-400' : 'border-transparent'}">
+                                <div>
+                                    <div class="text-xs font-bold text-indigo-500">${c.day.substring(0,3)} ${c.slot}</div>
+                                    <div class="font-bold ${c.isAttended ? 'text-green-600' : 'text-slate-800'}">${c.subject} ${c.isAttended ? '✓' : ''}</div>
+                                    <div class="text-[10px] text-slate-400">${c.teacher}</div>
+                                </div>
+                                ${c.note ? `<button onclick="event.stopPropagation(); alert('Note: ${c.note}')" class="text-xl">📝</button>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>`;
+            }
+        };
+
+        // --- ACTIONS ---
+        const Actions = {
+            registerCollege: () => {
+                const name = prompt("College Name:");
+                if(!name) return;
+                const pass = prompt("Create Admin Password:");
+                const all = DB.getAll();
+                if(all[name]) return alert("College already exists!");
+                all[name] = { password: pass, sections: ['CS-A'], schedule: {}, cancelled: {}, notes: {}, attendance: {} };
+                DB.saveAll(all);
+                alert("College Registered! Now enter the name to join.");
+            },
+            enterCollege: () => {
+                const name = document.getElementById('join-name').value;
+                if(DB.getCollege(name)) {
+                    App.college = name;
+                    localStorage.setItem('active_college', name);
+                    document.getElementById('dev-tools').classList.remove('hidden');
+                    App.route('home');
+                } else alert("College not found.");
+            },
+            logout: () => {
+                localStorage.removeItem('active_college');
+                localStorage.removeItem('active_user');
+                location.reload();
+            },
+            loginRole: (role) => {
+                const data = DB.getCollege(App.college);
+                if(role === 'admin') {
+                    if(prompt("Admin Password:") === data.password) App.route('admin');
+                    else alert("Wrong Password");
+                } else if(role === 'teacher') {
+                    const n = prompt("Teacher Name:");
+                    if(n) { App.user = { name: n }; App.route('teacher'); }
+                } else {
+                    const sec = prompt("Section (e.g. CS-A):");
+                    const roll = prompt("Roll No:");
+                    if(sec && roll) { App.user = { section: sec, roll }; App.route('student'); }
+                }
+            },
+            addSection: () => {
+                const n = prompt("Section Name:");
+                if(n) DB.updateCollege(App.college, d => d.sections.push(n));
+            },
+            updateCell: (id, field, val) => {
+                DB.updateCollege(App.college, d => {
+                    if(!d.schedule[id]) d.schedule[id] = {};
+                    d.schedule[id][field] = val;
+                });
+            },
+            markAtt: (sKey, cId) => {
+                DB.updateCollege(App.college, d => {
+                    if(!d.attendance[sKey]) d.attendance[sKey] = {};
+                    d.attendance[sKey][cId] = !d.attendance[sKey][cId];
+                });
+            }
+        };
+
+        // --- INTERACTION HANDLER ---
+        const Interaction = {
+            timer: null,
+            longPressed: false,
+            start: (id) => {
+                Interaction.longPressed = false;
+                Interaction.timer = setTimeout(() => {
+                    Interaction.longPressed = true;
+                    const note = prompt("Enter Class Note:");
+                    if(note !== null) DB.updateCollege(App.college, d => d.notes[id] = note);
+                }, 700);
+            },
+            end: () => clearTimeout(Interaction.timer)
+        };
+
+        document.addEventListener('mouseup', (e) => {
+            const target = e.target.closest('[onmousedown]');
+            if(target && !Interaction.longPressed && Interaction.timer) {
+                clearTimeout(Interaction.timer);
+                const id = target.getAttribute('onmousedown').match(/'(.*?)'/)[1];
+                DB.updateCollege(App.college, d => {
+                    if(d.cancelled[id]) delete d.cancelled[id];
+                    else d.cancelled[id] = true;
+                });
+            }
+            Interaction.timer = null;
+        });
+
+        App.init();
+    </script>
+</body>
+</html>
