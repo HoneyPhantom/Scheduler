@@ -388,6 +388,110 @@
                 const n = prompt("Section Name:");
                 if(n) DB.updateCollege(App.college, d => d.sections.push(n));
             },
+            loginRole: (role) => {
+                const data = DB.getCollege(App.college);
+                
+                if(role === 'admin') {
+                    if(prompt("Admin Password:") === data.password) App.route('admin');
+                    else alert("Wrong Password");
+                } 
+                else if(role === 'teacher') {
+                    const n = prompt("Teacher Name:");
+                    if(!n) return;
+                    const userId = `T-${n}`;
+                    const existingPass = data.user_vault[userId];
+                    if(!existingPass) {
+                        const newPass = prompt("New Teacher: Set your password:");
+                        if(newPass) { 
+                                DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); 
+                            App.user = { name: n }; App.route('teacher'); 
+                        }
+                    } else if(prompt("Enter password:") === existingPass) { 
+                        App.user = { name: n }; App.route('teacher'); 
+                    }
+                } 
+                else if(role === 'student') {
+                    // NEW: Dynamic Student Login UI
+                    Actions.showStudentLoginModal(data);
+                }
+            },
+
+            showStudentLoginModal: (data) => {
+                // Get unique years for the first dropdown
+                const years = [...new Set(data.sections.map(s => s.year))];
+            
+                const modalHtml = `
+                    <div id="login-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl fade-in">
+                            <h3 class="text-xl font-bold mb-4 text-slate-800">Student Login</h3>
+                        
+                            <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Select Year</label>
+                            <select id="login-year" class="w-full border p-3 rounded-lg mb-4 bg-slate-50" onchange="Actions.updateSectionDropdown()">
+                                <option value="">-- Select Year --</option>
+                                ${years.map(y => `<option value="${y}">${y}</option>`).join('')}
+                            </select>
+
+                            <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Select Section</label>
+                            <select id="login-section" class="w-full border p-3 rounded-lg mb-4 bg-slate-50">
+                                <option value="">-- Select Year First --</option>
+                            </select>
+
+                            <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Roll Number</label>
+                            <input id="login-roll" type="number" placeholder="Enter Roll No" class="w-full border p-3 rounded-lg mb-6">
+
+                            <div class="flex gap-2">
+                                <button onclick="document.getElementById('login-modal').remove()" class="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
+                                <button onclick="Actions.submitStudentLogin()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-bold shadow-lg shadow-indigo-200">Continue</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+            },
+    
+            updateSectionDropdown: () => {
+                const data = DB.getCollege(App.college);
+                const selectedYear = document.getElementById('login-year').value;
+                const sectionSelect = document.getElementById('login-section');
+            
+                const filteredSections = data.sections.filter(s => s.year === selectedYear);
+            
+                sectionSelect.innerHTML = filteredSections.map(s => 
+                    `<option value="${s.name}">${s.name}</option>`
+                ).join('') || '<option value="">-- No Sections --</option>';
+            },
+
+            submitStudentLogin: () => {
+                const data = DB.getCollege(App.college);
+                const yr = document.getElementById('login-year').value;
+                const nm = document.getElementById('login-section').value;
+                const roll = document.getElementById('login-roll').value;
+
+                if(!yr || !nm || !roll) return alert("Please fill all fields");
+
+                const sectionId = `${yr}-${nm}`;
+                const userId = `S-${sectionId}-${roll}`;
+                const existingPass = data.user_vault[userId];
+
+                if(!existingPass) {
+                    const newPass = prompt("New Student Account! Set your password:");
+                    if(newPass) {
+                        DB.updateCollege(App.college, d => d.user_vault[userId] = newPass);
+                        App.user = { sectionId, roll };
+                        document.getElementById('login-modal').remove();
+                        App.route('student');
+                    }
+                } else {
+                    const passAttempt = prompt("Enter your password:");
+                    if(passAttempt === existingPass) {
+                        App.user = { sectionId, roll };
+                        document.getElementById('login-modal').remove();
+                        App.route('student');
+                    } else {
+                        alert("Incorrect Password");
+                    }
+                }
+            },
             updateCell: (id, field, val) => {
                 DB.updateCollege(App.college, d => {
                     if(!d.schedule[id]) d.schedule[id] = {};
