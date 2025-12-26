@@ -29,28 +29,12 @@
                     <div id="clock-display" class="font-mono text-lg font-bold text-indigo-400">00:00</div>
                     <div id="active-college-tag" class="text-[10px] bg-indigo-900 px-2 py-0.5 rounded text-indigo-200 uppercase tracking-widest font-bold">COLLEGE</div>
                 </div>
-                <button onclick="Actions.logout()" class="p-2 bg-slate-800 rounded-full hover:bg-red-900 transition">College</button>
+                <button onclick="Actions.logout()" class="p-2 bg-slate-800 rounded-full hover:bg-red-900 transition text-xs">Exit College</button>
             </div>
         </div>
     </header>
 
     <main id="app" class="flex-grow container mx-auto px-4 py-6 fade-in"></main>
-
-    <div id="dev-tools" class="fixed bottom-4 left-4 bg-white p-3 rounded-lg shadow-xl border border-slate-300 z-50 text-xs w-56 hidden">
-        <div class="font-bold text-slate-700 border-b pb-1 mb-2">🔧 Simulation Tools</div>
-        <div class="flex items-center justify-between mb-2">
-            <span>Override Time:</span>
-            <input type="checkbox" id="debug-toggle" onchange="App.toggleDebug()">
-        </div>
-        <div id="debug-controls" class="hidden space-y-2">
-            <select id="debug-day" onchange="App.render()" class="w-full border p-1 rounded">
-                <option value="Monday">Monday</option><option value="Tuesday">Tuesday</option>
-                <option value="Wednesday">Wednesday</option><option value="Thursday">Thursday</option>
-                <option value="Friday">Friday</option>
-            </select>
-            <input type="time" id="debug-time" onchange="App.render()" value="09:00" class="w-full border p-1 rounded">
-        </div>
-    </div>
 
     <script>
         // --- CONFIG & CONSTANTS ---
@@ -63,9 +47,7 @@
         const DB = {
             getAll: () => JSON.parse(localStorage.getItem('uni_multiverse') || '{}'),
             saveAll: (data) => localStorage.setItem('uni_multiverse', JSON.stringify(data)),
-            
             getCollege: (name) => DB.getAll()[name],
-            
             updateCollege: (name, fn) => {
                 const all = DB.getAll();
                 if(all[name]) {
@@ -78,13 +60,7 @@
 
         // --- TIME ENGINE ---
         const Time = {
-            isDebug: false,
             getCurrent: () => {
-                if (Time.isDebug) {
-                    const d = document.getElementById('debug-day').value;
-                    const t = document.getElementById('debug-time').value;
-                    return { day: d, time: t, dayIndex: CONFIG.days.indexOf(d) };
-                }
                 const now = new Date();
                 return { 
                     day: now.toLocaleDateString('en-US', { weekday: 'long' }), 
@@ -112,26 +88,16 @@
             activeSection: null,
 
             init: () => {
-                if(App.college) { 
-                    App.view = 'home';
-                    document.getElementById('dev-tools').classList.remove('hidden');
-                }
-                
+                if(App.college) App.view = 'home';
                 setInterval(() => {
                     const now = Time.getCurrent();
-                    document.getElementById('clock-display').innerText = now.time;
+                    const clock = document.getElementById('clock-display');
+                    if(clock) clock.innerText = now.time;
                 }, 1000);
-                
                 App.render();
             },
 
             route: (v) => { App.view = v; App.render(); },
-            
-            toggleDebug: () => {
-                Time.isDebug = document.getElementById('debug-toggle').checked;
-                document.getElementById('debug-controls').classList.toggle('hidden');
-                App.render();
-            },
 
             render: () => {
                 const container = document.getElementById('app');
@@ -343,10 +309,18 @@
             registerCollege: () => {
                 const name = prompt("College Name:");
                 if(!name) return;
-                const pass = prompt("Create Admin Password:");
+                const pass = prompt("Create Admin (Master) Password:");
                 const all = DB.getAll();
                 if(all[name]) return alert("College already exists!");
-                all[name] = { password: pass, sections: ['CS-A'], schedule: {}, cancelled: {}, notes: {}, attendance: {} };
+                all[name] = { 
+                    password: pass, 
+                    sections: ['CS-A'], 
+                    schedule: {}, 
+                    cancelled: {}, 
+                    notes: {}, 
+                    attendance: {},
+                    user_vault: {} // Stores teacher/student sub-passwords
+                };
                 DB.saveAll(all);
                 alert("College Registered! Now enter the name to join.");
             },
@@ -355,7 +329,6 @@
                 if(DB.getCollege(name)) {
                     App.college = name;
                     localStorage.setItem('active_college', name);
-                    document.getElementById('dev-tools').classList.remove('hidden');
                     App.route('home');
                 } else alert("College not found.");
             },
@@ -366,16 +339,49 @@
             },
             loginRole: (role) => {
                 const data = DB.getCollege(App.college);
+                
                 if(role === 'admin') {
                     if(prompt("Admin Password:") === data.password) App.route('admin');
                     else alert("Wrong Password");
-                } else if(role === 'teacher') {
+                } 
+                else if(role === 'teacher') {
                     const n = prompt("Teacher Name:");
-                    if(n) { App.user = { name: n }; App.route('teacher'); }
-                } else {
+                    if(!n) return;
+                    
+                    const userId = `T-${n}`;
+                    const existingPass = data.user_vault[userId];
+                    
+                    if(!existingPass) {
+                        const newPass = prompt("Set a password for your account (New Teacher):");
+                        if(newPass) {
+                            DB.updateCollege(App.college, d => d.user_vault[userId] = newPass);
+                            App.user = { name: n }; App.route('teacher');
+                        }
+                    } else {
+                        if(prompt("Enter your password:") === existingPass) {
+                            App.user = { name: n }; App.route('teacher');
+                        } else alert("Access Denied.");
+                    }
+                } 
+                else {
                     const sec = prompt("Section (e.g. CS-A):");
                     const roll = prompt("Roll No:");
-                    if(sec && roll) { App.user = { section: sec, roll }; App.route('student'); }
+                    if(!sec || !roll) return;
+                    
+                    const userId = `S-${sec}-${roll}`;
+                    const existingPass = data.user_vault[userId];
+                    
+                    if(!existingPass) {
+                        const newPass = prompt("Set a password for your account (New Student):");
+                        if(newPass) {
+                            DB.updateCollege(App.college, d => d.user_vault[userId] = newPass);
+                            App.user = { section: sec, roll }; App.route('student');
+                        }
+                    } else {
+                        if(prompt("Enter your password:") === existingPass) {
+                            App.user = { section: sec, roll }; App.route('student');
+                        } else alert("Access Denied.");
+                    }
                 }
             },
             addSection: () => {
