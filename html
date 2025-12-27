@@ -37,13 +37,11 @@
     <main id="app" class="flex-grow container mx-auto px-4 py-6 fade-in"></main>
 
     <script>
-        // --- CONFIG & CONSTANTS ---
         const CONFIG = {
             days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
             slots: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00']
         };
 
-        // --- MULTI-TENANT DB SYSTEM ---
         const DB = {
             getAll: () => JSON.parse(localStorage.getItem('uni_multiverse') || '{}'),
             saveAll: (data) => localStorage.setItem('uni_multiverse', JSON.stringify(data)),
@@ -58,7 +56,6 @@
             }
         };
 
-        // --- TIME ENGINE ---
         const Time = {
             getCurrent: () => {
                 const now = new Date();
@@ -80,12 +77,11 @@
             }
         };
 
-        // --- APP STATE & ROUTING ---
         const App = {
             college: localStorage.getItem('active_college'),
             view: 'gatekeeper',
             user: JSON.parse(localStorage.getItem('active_user') || 'null'),
-            activeSection: null,
+            activeSection: null, // This will now store the unique ID: "Year-Name"
 
             init: () => {
                 if(App.college) App.view = 'home';
@@ -122,7 +118,6 @@
             }
         };
 
-        // --- VIEWS ---
         const Views = {
             gatekeeper: () => `
                 <div class="max-w-md mx-auto bg-white p-8 rounded-2xl shadow-xl mt-10">
@@ -167,11 +162,12 @@
                             <h3 class="font-bold text-xs uppercase text-slate-400 mb-4">Sections</h3>
                             <div class="space-y-2">
                                 ${data.sections.map(s => `
-                                    <div onclick="App.activeSection='${s}'; App.render()" class="p-3 rounded cursor-pointer border ${App.activeSection === s ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-transparent hover:bg-slate-50'}">
-                                        ${s}
+                                    <div onclick="App.activeSection='${s.id}'; App.render()" class="p-3 rounded cursor-pointer border ${App.activeSection === s.id ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-transparent hover:bg-slate-50'}">
+                                        <div class="text-[10px] uppercase text-slate-400 font-bold leading-none">${s.year}</div>
+                                        <div class="font-bold">${s.name}</div>
                                     </div>
                                 `).join('')}
-                                <button onclick="Actions.addSection()" class="w-full py-2 border-2 border-dashed rounded text-slate-400 hover:text-indigo-500">+ Section</button>
+                                <button onclick="Actions.addSection()" class="w-full py-2 border-2 border-dashed rounded text-slate-400 hover:text-indigo-500 mt-2 text-sm">+ Section</button>
                             </div>
                         </div>
                         <div class="md:col-span-3 bg-white rounded-xl shadow overflow-x-auto">
@@ -181,7 +177,7 @@
                 </div>
             `,
 
-            timetableEditor: (data, section) => `
+            timetableEditor: (data, sectionId) => `
                 <table class="w-full text-sm text-left">
                     <thead class="bg-slate-50 text-slate-500">
                         <tr><th class="p-4">Day</th>${CONFIG.slots.map(s => `<th class="p-4 border-l">${s}</th>`).join('')}</tr>
@@ -191,12 +187,12 @@
                             <tr class="border-t">
                                 <td class="p-4 font-bold text-slate-400">${day.substring(0,3)}</td>
                                 ${CONFIG.slots.map(slot => {
-                                    const id = `${section}-${day}-${slot}`;
-                                    const cell = data.schedule[id] || { subject: '', teacher: '' };
+                                    const cellId = `${sectionId}-${day}-${slot}`;
+                                    const cell = data.schedule[cellId] || { subject: '', teacher: '' };
                                     return `
                                         <td class="p-2 border-l">
-                                            <input type="text" value="${cell.subject}" placeholder="Subj" class="w-full text-xs font-bold focus:outline-none" onchange="Actions.updateCell('${id}', 'subject', this.value)">
-                                            <input type="text" value="${cell.teacher}" placeholder="Teacher" class="w-full text-[10px] text-slate-400 focus:outline-none" onchange="Actions.updateCell('${id}', 'teacher', this.value)">
+                                            <input type="text" value="${cell.subject}" placeholder="Subj" class="w-full text-xs font-bold focus:outline-none" onchange="Actions.updateCell('${cellId}', 'subject', this.value)">
+                                            <input type="text" value="${cell.teacher}" placeholder="Teacher" class="w-full text-[10px] text-slate-400 focus:outline-none" onchange="Actions.updateCell('${cellId}', 'teacher', this.value)">
                                         </td>
                                     `;
                                 }).join('')}
@@ -219,17 +215,21 @@
                         ${CONFIG.slots.map(slot => `
                             <div class="p-4 border-b border-r bg-slate-50 text-center text-xs font-bold text-slate-400">${slot}</div>
                             ${CONFIG.days.map(day => {
-                                let matchId = null, matchData = null, matchSec = null;
+                                let matchId = null, matchData = null, matchSecName = null;
                                 data.sections.forEach(sec => {
-                                    const id = `${sec}-${day}-${slot}`;
-                                    if(data.schedule[id]?.teacher === App.user.name) { matchId = id; matchData = data.schedule[id]; matchSec = sec; }
+                                    const id = `${sec.id}-${day}-${slot}`;
+                                    if(data.schedule[id]?.teacher === App.user.name) { 
+                                        matchId = id; 
+                                        matchData = data.schedule[id]; 
+                                        matchSecName = `${sec.year} - ${sec.name}`; 
+                                    }
                                 });
                                 if(!matchId) return `<div class="border-b border-r bg-slate-50/30"></div>`;
                                 return `
                                     <div class="p-2 border-b border-r relative cursor-pointer select-none transition hover:bg-indigo-50 ${data.cancelled[matchId] ? 'cancelled-class' : ''}"
                                          onmousedown="Interaction.start('${matchId}')" ontouchstart="Interaction.start('${matchId}')"
                                          onmouseup="Interaction.end()" onmouseleave="Interaction.end()">
-                                        <div class="text-[10px] font-bold text-indigo-500">${matchSec}</div>
+                                        <div class="text-[10px] font-bold text-indigo-500 leading-none mb-1">${matchSecName}</div>
                                         <div class="text-xs font-bold leading-tight">${matchData.subject}</div>
                                         ${data.notes[matchId] ? '<div class="absolute bottom-1 right-1">📝</div>' : ''}
                                     </div>
@@ -241,13 +241,12 @@
             `,
 
             student: (data) => {
-                const sKey = `${App.user.section}-${App.user.roll}`;
+                const sKey = `${App.user.sectionId}-${App.user.roll}`;
                 let next = null, total = 0, attended = 0;
-                
                 const list = [];
                 CONFIG.days.forEach(day => {
                     CONFIG.slots.forEach(slot => {
-                        const id = `${App.user.section}-${day}-${slot}`;
+                        const id = `${App.user.sectionId}-${day}-${slot}`;
                         if(data.schedule[id]) {
                             const status = Time.getStatus(day, slot);
                             const item = { ...data.schedule[id], id, day, slot, status, 
@@ -269,7 +268,7 @@
                 return `
                 <div class="max-w-md mx-auto">
                     <div class="flex justify-between items-center mb-6">
-                        <div><h2 class="text-2xl font-bold">Student Portal</h2><p class="text-slate-500">${App.user.section} | Roll ${App.user.roll}</p></div>
+                        <div><h2 class="text-2xl font-bold">Student Portal</h2><p class="text-slate-500">${App.user.sectionId} | Roll ${App.user.roll}</p></div>
                         <button onclick="App.route('home')" class="text-slate-400">Logout</button>
                     </div>
                     <div class="grid grid-cols-2 gap-4 mb-6">
@@ -304,7 +303,6 @@
             }
         };
 
-        // --- ACTIONS ---
         const Actions = {
             registerCollege: () => {
                 const name = prompt("College Name:");
@@ -314,15 +312,15 @@
                 if(all[name]) return alert("College already exists!");
                 all[name] = { 
                     password: pass, 
-                    sections: ['CS-A'], 
+                    sections: [{ id: '1-CS-A', year: 'Year 1', name: 'CS-A' }], 
                     schedule: {}, 
                     cancelled: {}, 
                     notes: {}, 
                     attendance: {},
-                    user_vault: {} // Stores teacher/student sub-passwords
+                    user_vault: {} 
                 };
                 DB.saveAll(all);
-                alert("College Registered! Now enter the name to join.");
+                alert("College Registered!");
             },
             enterCollege: () => {
                 const name = document.getElementById('join-name').value;
@@ -333,64 +331,11 @@
                 } else alert("College not found.");
             },
             logout: () => {
-                localStorage.removeItem('active_college');
-                localStorage.removeItem('active_user');
+                localStorage.clear();
                 location.reload();
             },
             loginRole: (role) => {
                 const data = DB.getCollege(App.college);
-                
-                if(role === 'admin') {
-                    if(prompt("Admin Password:") === data.password) App.route('admin');
-                    else alert("Wrong Password");
-                } 
-                else if(role === 'teacher') {
-                    const n = prompt("Teacher Name:");
-                    if(!n) return;
-                    
-                    const userId = `T-${n}`;
-                    const existingPass = data.user_vault[userId];
-                    
-                    if(!existingPass) {
-                        const newPass = prompt("Set a password for your account (New Teacher):");
-                        if(newPass) {
-                            DB.updateCollege(App.college, d => d.user_vault[userId] = newPass);
-                            App.user = { name: n }; App.route('teacher');
-                        }
-                    } else {
-                        if(prompt("Enter your password:") === existingPass) {
-                            App.user = { name: n }; App.route('teacher');
-                        } else alert("Access Denied.");
-                    }
-                } 
-                else {
-                    const sec = prompt("Section (e.g. CS-A):");
-                    const roll = prompt("Roll No:");
-                    if(!sec || !roll) return;
-                    
-                    const userId = `S-${sec}-${roll}`;
-                    const existingPass = data.user_vault[userId];
-                    
-                    if(!existingPass) {
-                        const newPass = prompt("Set a password for your account (New Student):");
-                        if(newPass) {
-                            DB.updateCollege(App.college, d => d.user_vault[userId] = newPass);
-                            App.user = { section: sec, roll }; App.route('student');
-                        }
-                    } else {
-                        if(prompt("Enter your password:") === existingPass) {
-                            App.user = { section: sec, roll }; App.route('student');
-                        } else alert("Access Denied.");
-                    }
-                }
-            },
-            addSection: () => {
-                const n = prompt("Section Name:");
-                if(n) DB.updateCollege(App.college, d => d.sections.push(n));
-            },
-            loginRole: (role) => {
-                const data = DB.getCollege(App.college);
-                
                 if(role === 'admin') {
                     if(prompt("Admin Password:") === data.password) App.route('admin');
                     else alert("Wrong Password");
@@ -402,96 +347,139 @@
                     const existingPass = data.user_vault[userId];
                     if(!existingPass) {
                         const newPass = prompt("New Teacher: Set your password:");
-                        if(newPass) { 
-                                DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); 
-                            App.user = { name: n }; App.route('teacher'); 
-                        }
-                    } else if(prompt("Enter password:") === existingPass) { 
+                        if(newPass) { DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); App.user = { name: n }; App.route('teacher'); }
+                    } else if(prompt("Enter password:") === existingPass) { App.user = { name: n }; App.route('teacher'); }
+                } 
+                else {
+                    const year = prompt("Year (e.g. Year 1):");
+                    const sec = prompt("Section Name (e.g. CS-A):");
+                    const roll = prompt("Roll No:");
+                    if(!year || !sec || !roll) return;
+                    const sectionId = `${year}-${sec}`;
+                    const userId = `S-${sectionId}-${roll}`;
+                    const existingPass = data.user_vault[userId];
+                    if(!existingPass) {
+                        const newPass = prompt("New Student: Set your password:");
+                        if(newPass) { DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); App.user = { sectionId, roll }; App.route('student'); }
+                    } else if(prompt("Enter password:") === existingPass) { App.user = { sectionId, roll }; App.route('student'); }
+                }
+            },
+            addSection: () => {
+                const yr = prompt("Academic Year (e.g. Year 1):");
+                if(!yr) return;
+                const nm = prompt("Section Name (e.g. CS-A):");
+                if(!nm) return;
+                
+                const id = `${yr}-${nm}`;
+                DB.updateCollege(App.college, d => {
+                    if(d.sections.some(s => s.id === id)) alert("This section already exists!");
+                    else d.sections.push({ id, year: yr, name: nm });
+                });
+            },
+            loginRole: (role) => {
+            const data = DB.getCollege(App.college);
+            
+            if(role === 'admin') {
+                if(prompt("Admin Password:") === data.password) App.route('admin');
+                else alert("Wrong Password");
+            } 
+            else if(role === 'teacher') {
+                const n = prompt("Teacher Name:");
+                if(!n) return;
+                const userId = `T-${n}`;
+                const existingPass = data.user_vault[userId];
+                if(!existingPass) {
+                    const newPass = prompt("New Teacher: Set your password:");
+                    if(newPass) { 
+                        DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); 
                         App.user = { name: n }; App.route('teacher'); 
                     }
-                } 
-                else if(role === 'student') {
-                    // NEW: Dynamic Student Login UI
-                    Actions.showStudentLoginModal(data);
+                } else if(prompt("Enter password:") === existingPass) { 
+                    App.user = { name: n }; App.route('teacher'); 
                 }
-            },
+            } 
+            else if(role === 'student') {
+                // NEW: Dynamic Student Login UI
+                Actions.showStudentLoginModal(data);
+            }
+        },
 
-            showStudentLoginModal: (data) => {
-                // Get unique years for the first dropdown
-                const years = [...new Set(data.sections.map(s => s.year))];
+        showStudentLoginModal: (data) => {
+            // Get unique years for the first dropdown
+            const years = [...new Set(data.sections.map(s => s.year))];
             
-                const modalHtml = `
-                    <div id="login-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl fade-in">
-                            <h3 class="text-xl font-bold mb-4 text-slate-800">Student Login</h3>
+            const modalHtml = `
+                <div id="login-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl fade-in">
+                        <h3 class="text-xl font-bold mb-4 text-slate-800">Student Login</h3>
                         
-                            <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Select Year</label>
-                            <select id="login-year" class="w-full border p-3 rounded-lg mb-4 bg-slate-50" onchange="Actions.updateSectionDropdown()">
-                                <option value="">-- Select Year --</option>
-                                ${years.map(y => `<option value="${y}">${y}</option>`).join('')}
-                            </select>
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Select Year</label>
+                        <select id="login-year" class="w-full border p-3 rounded-lg mb-4 bg-slate-50" onchange="Actions.updateSectionDropdown()">
+                            <option value="">-- Select Year --</option>
+                            ${years.map(y => `<option value="${y}">${y}</option>`).join('')}
+                        </select>
 
-                            <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Select Section</label>
-                            <select id="login-section" class="w-full border p-3 rounded-lg mb-4 bg-slate-50">
-                                <option value="">-- Select Year First --</option>
-                            </select>
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Select Section</label>
+                        <select id="login-section" class="w-full border p-3 rounded-lg mb-4 bg-slate-50">
+                            <option value="">-- Select Year First --</option>
+                        </select>
 
-                            <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Roll Number</label>
-                            <input id="login-roll" type="number" placeholder="Enter Roll No" class="w-full border p-3 rounded-lg mb-6">
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Roll Number</label>
+                        <input id="login-roll" type="number" placeholder="Enter Roll No" class="w-full border p-3 rounded-lg mb-6">
 
-                            <div class="flex gap-2">
-                                <button onclick="document.getElementById('login-modal').remove()" class="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
-                                <button onclick="Actions.submitStudentLogin()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-bold shadow-lg shadow-indigo-200">Continue</button>
-                            </div>
+                        <div class="flex gap-2">
+                            <button onclick="document.getElementById('login-modal').remove()" class="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
+                            <button onclick="Actions.submitStudentLogin()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-bold shadow-lg shadow-indigo-200">Continue</button>
                         </div>
                     </div>
-                `;
-                document.body.insertAdjacentHTML('beforeend', modalHtml);
-            },
-    
-            updateSectionDropdown: () => {
-                const data = DB.getCollege(App.college);
-                const selectedYear = document.getElementById('login-year').value;
-                const sectionSelect = document.getElementById('login-section');
+                </div>
+            `;
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+        },
+
+        updateSectionDropdown: () => {
+            const data = DB.getCollege(App.college);
+            const selectedYear = document.getElementById('login-year').value;
+            const sectionSelect = document.getElementById('login-section');
             
-                const filteredSections = data.sections.filter(s => s.year === selectedYear);
+            const filteredSections = data.sections.filter(s => s.year === selectedYear);
             
-                sectionSelect.innerHTML = filteredSections.map(s => 
-                    `<option value="${s.name}">${s.name}</option>`
-                ).join('') || '<option value="">-- No Sections --</option>';
-            },
+            sectionSelect.innerHTML = filteredSections.map(s => 
+                `<option value="${s.name}">${s.name}</option>`
+            ).join('') || '<option value="">-- No Sections --</option>';
+        },
 
-            submitStudentLogin: () => {
-                const data = DB.getCollege(App.college);
-                const yr = document.getElementById('login-year').value;
-                const nm = document.getElementById('login-section').value;
-                const roll = document.getElementById('login-roll').value;
+        submitStudentLogin: () => {
+            const data = DB.getCollege(App.college);
+            const yr = document.getElementById('login-year').value;
+            const nm = document.getElementById('login-section').value;
+            const roll = document.getElementById('login-roll').value;
 
-                if(!yr || !nm || !roll) return alert("Please fill all fields");
+            if(!yr || !nm || !roll) return alert("Please fill all fields");
 
-                const sectionId = `${yr}-${nm}`;
-                const userId = `S-${sectionId}-${roll}`;
-                const existingPass = data.user_vault[userId];
+            const sectionId = `${yr}-${nm}`;
+            const userId = `S-${sectionId}-${roll}`;
+            const existingPass = data.user_vault[userId];
 
-                if(!existingPass) {
-                    const newPass = prompt("New Student Account! Set your password:");
-                    if(newPass) {
-                        DB.updateCollege(App.college, d => d.user_vault[userId] = newPass);
-                        App.user = { sectionId, roll };
-                        document.getElementById('login-modal').remove();
-                        App.route('student');
-                    }
-                } else {
-                    const passAttempt = prompt("Enter your password:");
-                    if(passAttempt === existingPass) {
-                        App.user = { sectionId, roll };
-                        document.getElementById('login-modal').remove();
-                        App.route('student');
-                    } else {
-                        alert("Incorrect Password");
-                    }
+            if(!existingPass) {
+                const newPass = prompt("New Student Account! Set your password:");
+                if(newPass) {
+                    DB.updateCollege(App.college, d => d.user_vault[userId] = newPass);
+                    App.user = { sectionId, roll };
+                    document.getElementById('login-modal').remove();
+                    App.route('student');
                 }
-            },
+            } else {
+                const passAttempt = prompt("Enter your password:");
+                if(passAttempt === existingPass) {
+                    App.user = { sectionId, roll };
+                    document.getElementById('login-modal').remove();
+                    App.route('student');
+                } else {
+                    alert("Incorrect Password");
+                }
+            }
+        },
             updateCell: (id, field, val) => {
                 DB.updateCollege(App.college, d => {
                     if(!d.schedule[id]) d.schedule[id] = {};
@@ -506,7 +494,6 @@
             }
         };
 
-        // --- INTERACTION HANDLER ---
         const Interaction = {
             timer: null,
             longPressed: false,
