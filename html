@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>UniScheduler Pro | Multi-College</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
         .cancelled-class { background-color: #fee2e2 !important; color: #991b1b !important; position: relative; overflow: hidden; }
@@ -14,6 +14,9 @@
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } }
         .fade-in { animation: fadeIn 0.3s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        /* Custom scrollbar for the timetable */
+        .overflow-x-auto::-webkit-scrollbar { height: 6px; }
+        .overflow-x-auto::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex flex-col">
@@ -81,7 +84,7 @@
             college: localStorage.getItem('active_college'),
             view: 'gatekeeper',
             user: JSON.parse(localStorage.getItem('active_user') || 'null'),
-            activeSection: null, // This will now store the unique ID: "Year-Name"
+            activeSection: null,
 
             init: () => {
                 if(App.college) App.view = 'home';
@@ -243,61 +246,96 @@
             student: (data) => {
                 const sKey = `${App.user.sectionId}-${App.user.roll}`;
                 let next = null, total = 0, attended = 0;
-                const list = [];
+                
                 CONFIG.days.forEach(day => {
                     CONFIG.slots.forEach(slot => {
                         const id = `${App.user.sectionId}-${day}-${slot}`;
                         if(data.schedule[id]) {
                             const status = Time.getStatus(day, slot);
-                            const item = { ...data.schedule[id], id, day, slot, status, 
-                                isCancelled: !!data.cancelled[id], 
-                                isAttended: !!(data.attendance[sKey] && data.attendance[sKey][id]),
-                                note: data.notes[id]
-                            };
-                            list.push(item);
-                            if(status === 'past' && !item.isCancelled) {
+                            const isCancelled = !!data.cancelled[id];
+                            if(status === 'past' && !isCancelled) {
                                 total++;
-                                if(item.isAttended) attended++;
+                                if(data.attendance[sKey] && data.attendance[sKey][id]) attended++;
                             }
-                            if(!next && (status === 'active' || status === 'future') && !item.isCancelled) next = item;
+                            if(!next && (status === 'active' || status === 'future') && !isCancelled) {
+                                next = { ...data.schedule[id], day, slot };
+                            }
                         }
                     });
                 });
                 const pct = total === 0 ? 0 : Math.round((attended/total)*100);
 
                 return `
-                <div class="max-w-md mx-auto">
-                    <div class="flex justify-between items-center mb-6">
-                        <div><h2 class="text-2xl font-bold">Student Portal</h2><p class="text-slate-500">${App.user.sectionId} | Roll ${App.user.roll}</p></div>
-                        <button onclick="App.route('home')" class="text-slate-400">Logout</button>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4 mb-6">
-                        <div class="bg-white p-4 rounded-xl shadow border-l-4 border-indigo-500">
-                            <div class="text-[10px] uppercase font-bold text-slate-400">Attendance</div>
-                            <div class="text-2xl font-bold text-indigo-600">${pct}%</div>
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                        <div>
+                            <h2 class="text-2xl font-bold text-slate-800">Student Portal</h2>
+                            <p class="text-slate-500 font-medium">${App.user.sectionId} • Roll: ${App.user.roll}</p>
                         </div>
-                        <div class="bg-white p-4 rounded-xl shadow border-l-4 border-orange-400">
-                            <div class="text-[10px] uppercase font-bold text-slate-400">Total Past</div>
-                            <div class="text-2xl font-bold">${total}</div>
-                        </div>
+                        <button onclick="App.route('home')" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-700 text-sm font-bold transition">Switch Role</button>
                     </div>
-                    ${next ? `<div class="bg-slate-900 text-white p-4 rounded-xl mb-6 shadow-xl">
-                        <div class="text-xs text-indigo-400 font-bold mb-1">NEXT CLASS</div>
-                        <div class="text-lg font-bold">${next.subject}</div>
-                        <div class="text-sm opacity-70">${next.day} @ ${next.slot} | ${next.teacher}</div>
-                    </div>` : ''}
-                    <div class="space-y-3">
-                        ${list.map(c => `
-                            <div onclick="${c.status !== 'future' ? `Actions.markAtt('${sKey}','${c.id}')` : ''}" 
-                                 class="bg-white p-4 rounded-xl shadow flex justify-between items-center border ${c.isCancelled ? 'cancelled-class' : ''} ${c.status === 'active' ? 'active-slot' : ''} ${c.isAttended ? 'border-green-400' : 'border-transparent'}">
-                                <div>
-                                    <div class="text-xs font-bold text-indigo-500">${c.day.substring(0,3)} ${c.slot}</div>
-                                    <div class="font-bold ${c.isAttended ? 'text-green-600' : 'text-slate-800'}">${c.subject} ${c.isAttended ? '✓' : ''}</div>
-                                    <div class="text-[10px] text-slate-400">${c.teacher}</div>
-                                </div>
-                                ${c.note ? `<button onclick="event.stopPropagation(); alert('Note: ${c.note}')" class="text-xl">📝</button>` : ''}
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                        <div class="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-indigo-500">
+                            <div class="text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">Attendance Rate</div>
+                            <div class="text-3xl font-bold text-slate-800">${pct}%</div>
+                        </div>
+                        ${next ? `
+                        <div class="md:col-span-2 bg-slate-900 text-white p-5 rounded-2xl shadow-lg relative overflow-hidden">
+                            <div class="relative z-10">
+                                <div class="text-[10px] text-indigo-400 font-black tracking-widest mb-1 uppercase">Next Class</div>
+                                <div class="text-xl font-bold">${next.subject}</div>
+                                <div class="text-sm opacity-80">${next.day} at ${next.slot} • ${next.teacher}</div>
                             </div>
-                        `).join('')}
+                        </div>` : ''}
+                    </div>
+
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200">
+                                        <th class="p-4 text-left text-xs font-bold text-slate-400 uppercase w-24">Time</th>
+                                        ${CONFIG.days.map(day => `<th class="p-4 text-center text-xs font-bold text-slate-700 uppercase border-l border-slate-100">${day.substring(0,3)}</th>`).join('')}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${CONFIG.slots.map(slot => `
+                                        <tr class="border-b border-slate-100 last:border-0">
+                                            <td class="p-4 text-xs font-bold text-slate-500 bg-slate-50/50">${slot}</td>
+                                            ${CONFIG.days.map(day => {
+                                                const id = `${App.user.sectionId}-${day}-${slot}`;
+                                                const cell = data.schedule[id];
+                                                const status = Time.getStatus(day, slot);
+                                                const isCancelled = data.cancelled[id];
+                                                const isAttended = data.attendance[sKey] && data.attendance[sKey][id];
+                                                const note = data.notes[id];
+
+                                                if (!cell || !cell.subject) return `<td class="p-2 border-l border-slate-50 bg-slate-50/20"></td>`;
+
+                                                return `
+                                                    <td class="p-2 border-l border-slate-100 min-w-[140px]">
+                                                        <div onclick="${status !== 'future' ? `Actions.markAtt('${sKey}','${id}')` : `alert('Cannot mark attendance for future classes')`}"
+                                                             class="p-3 rounded-xl border transition-all cursor-pointer relative
+                                                             ${isCancelled ? 'cancelled-class opacity-60' : ''} 
+                                                             ${status === 'active' ? 'active-slot bg-indigo-50/50 border-indigo-200' : 'bg-white border-transparent hover:border-slate-200'} 
+                                                             ${isAttended ? 'ring-2 ring-green-500 border-green-200 bg-green-50' : ''}">
+                                                            <div class="flex justify-between items-start mb-1">
+                                                                <span class="text-[10px] font-black ${isAttended ? 'text-green-600' : 'text-indigo-500'} uppercase">${isAttended ? 'Present' : (isCancelled ? 'Cancelled' : status)}</span>
+                                                                ${note ? `<button onclick="event.stopPropagation(); alert('Note: ${note}')" class="text-xs">📝</button>` : ''}
+                                                            </div>
+                                                            <div class="font-bold text-slate-800 text-sm leading-tight">${cell.subject}</div>
+                                                            <div class="text-[10px] text-slate-400 font-medium">${cell.teacher}</div>
+                                                            ${isAttended ? `<div class="absolute bottom-1 right-2 text-green-600 font-bold text-xs">✓</div>` : ''}
+                                                        </div>
+                                                    </td>
+                                                `;
+                                            }).join('')}
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>`;
             }
@@ -307,18 +345,10 @@
             registerCollege: () => {
                 const name = prompt("College Name:");
                 if(!name) return;
-                const pass = prompt("Create Admin (Master) Password:");
+                const pass = prompt("Create Admin Password:");
                 const all = DB.getAll();
                 if(all[name]) return alert("College already exists!");
-                all[name] = { 
-                    password: pass, 
-                    sections: [{ id: '1-CS-A', year: 'Year 1', name: 'CS-A' }], 
-                    schedule: {}, 
-                    cancelled: {}, 
-                    notes: {}, 
-                    attendance: {},
-                    user_vault: {} 
-                };
+                all[name] = { password: pass, sections: [{ id: 'Year 1-CS-A', year: 'Year 1', name: 'CS-A' }], schedule: {}, cancelled: {}, notes: {}, attendance: {}, user_vault: {} };
                 DB.saveAll(all);
                 alert("College Registered!");
             },
@@ -330,10 +360,7 @@
                     App.route('home');
                 } else alert("College not found.");
             },
-            logout: () => {
-                localStorage.clear();
-                location.reload();
-            },
+            logout: () => { localStorage.clear(); location.reload(); },
             loginRole: (role) => {
                 const data = DB.getCollege(App.college);
                 if(role === 'admin') {
@@ -350,147 +377,59 @@
                         if(newPass) { DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); App.user = { name: n }; App.route('teacher'); }
                     } else if(prompt("Enter password:") === existingPass) { App.user = { name: n }; App.route('teacher'); }
                 } 
-                else {
-                    const year = prompt("Year (e.g. Year 1):");
-                    const sec = prompt("Section Name (e.g. CS-A):");
-                    const roll = prompt("Roll No:");
-                    if(!year || !sec || !roll) return;
-                    const sectionId = `${year}-${sec}`;
-                    const userId = `S-${sectionId}-${roll}`;
-                    const existingPass = data.user_vault[userId];
-                    if(!existingPass) {
-                        const newPass = prompt("New Student: Set your password:");
-                        if(newPass) { DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); App.user = { sectionId, roll }; App.route('student'); }
-                    } else if(prompt("Enter password:") === existingPass) { App.user = { sectionId, roll }; App.route('student'); }
-                }
+                else if(role === 'student') { Actions.showStudentLoginModal(data); }
+            },
+            showStudentLoginModal: (data) => {
+                const years = [...new Set(data.sections.map(s => s.year))];
+                const modalHtml = `
+                    <div id="login-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl fade-in">
+                            <h3 class="text-xl font-bold mb-4">Student Login</h3>
+                            <select id="login-year" class="w-full border p-3 rounded-lg mb-4" onchange="Actions.updateSectionDropdown()">
+                                <option value="">-- Select Year --</option>
+                                ${years.map(y => `<option value="${y}">${y}</option>`).join('')}
+                            </select>
+                            <select id="login-section" class="w-full border p-3 rounded-lg mb-4"><option value="">-- Select Year First --</option></select>
+                            <input id="login-roll" type="number" placeholder="Roll No" class="w-full border p-3 rounded-lg mb-6">
+                            <div class="flex gap-2">
+                                <button onclick="document.getElementById('login-modal').remove()" class="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
+                                <button onclick="Actions.submitStudentLogin()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-bold">Continue</button>
+                            </div>
+                        </div>
+                    </div>`;
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+            },
+            updateSectionDropdown: () => {
+                const data = DB.getCollege(App.college);
+                const yr = document.getElementById('login-year').value;
+                const sectionSelect = document.getElementById('login-section');
+                sectionSelect.innerHTML = data.sections.filter(s => s.year === yr).map(s => `<option value="${s.name}">${s.name}</option>`).join('') || '<option value="">-- No Sections --</option>';
+            },
+            submitStudentLogin: () => {
+                const data = DB.getCollege(App.college);
+                const yr = document.getElementById('login-year').value;
+                const nm = document.getElementById('login-section').value;
+                const roll = document.getElementById('login-roll').value;
+                const sectionId = `${yr}-${nm}`;
+                const userId = `S-${sectionId}-${roll}`;
+                const existingPass = data.user_vault[userId];
+
+                if(!existingPass) {
+                    const newPass = prompt("New Student! Set your password:");
+                    if(newPass) { DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); App.user = { sectionId, roll }; document.getElementById('login-modal').remove(); App.route('student'); }
+                } else if(prompt("Enter password:") === existingPass) { App.user = { sectionId, roll }; document.getElementById('login-modal').remove(); App.route('student'); }
+                else alert("Wrong Password");
             },
             addSection: () => {
-                const yr = prompt("Academic Year (e.g. Year 1):");
-                if(!yr) return;
-                const nm = prompt("Section Name (e.g. CS-A):");
-                if(!nm) return;
-                
-                const id = `${yr}-${nm}`;
-                DB.updateCollege(App.college, d => {
-                    if(d.sections.some(s => s.id === id)) alert("This section already exists!");
-                    else d.sections.push({ id, year: yr, name: nm });
-                });
+                const yr = prompt("Year (e.g. Year 1):");
+                const nm = prompt("Section (e.g. CS-A):");
+                if(yr && nm) DB.updateCollege(App.college, d => d.sections.push({ id: `${yr}-${nm}`, year: yr, name: nm }));
             },
-            loginRole: (role) => {
-            const data = DB.getCollege(App.college);
-            
-            if(role === 'admin') {
-                if(prompt("Admin Password:") === data.password) App.route('admin');
-                else alert("Wrong Password");
-            } 
-            else if(role === 'teacher') {
-                const n = prompt("Teacher Name:");
-                if(!n) return;
-                const userId = `T-${n}`;
-                const existingPass = data.user_vault[userId];
-                if(!existingPass) {
-                    const newPass = prompt("New Teacher: Set your password:");
-                    if(newPass) { 
-                        DB.updateCollege(App.college, d => d.user_vault[userId] = newPass); 
-                        App.user = { name: n }; App.route('teacher'); 
-                    }
-                } else if(prompt("Enter password:") === existingPass) { 
-                    App.user = { name: n }; App.route('teacher'); 
-                }
-            } 
-            else if(role === 'student') {
-                // NEW: Dynamic Student Login UI
-                Actions.showStudentLoginModal(data);
-            }
-        },
-
-        showStudentLoginModal: (data) => {
-            // Get unique years for the first dropdown
-            const years = [...new Set(data.sections.map(s => s.year))];
-            
-            const modalHtml = `
-                <div id="login-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl fade-in">
-                        <h3 class="text-xl font-bold mb-4 text-slate-800">Student Login</h3>
-                        
-                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Select Year</label>
-                        <select id="login-year" class="w-full border p-3 rounded-lg mb-4 bg-slate-50" onchange="Actions.updateSectionDropdown()">
-                            <option value="">-- Select Year --</option>
-                            ${years.map(y => `<option value="${y}">${y}</option>`).join('')}
-                        </select>
-
-                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Select Section</label>
-                        <select id="login-section" class="w-full border p-3 rounded-lg mb-4 bg-slate-50">
-                            <option value="">-- Select Year First --</option>
-                        </select>
-
-                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">Roll Number</label>
-                        <input id="login-roll" type="number" placeholder="Enter Roll No" class="w-full border p-3 rounded-lg mb-6">
-
-                        <div class="flex gap-2">
-                            <button onclick="document.getElementById('login-modal').remove()" class="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
-                            <button onclick="Actions.submitStudentLogin()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-bold shadow-lg shadow-indigo-200">Continue</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-        },
-
-        updateSectionDropdown: () => {
-            const data = DB.getCollege(App.college);
-            const selectedYear = document.getElementById('login-year').value;
-            const sectionSelect = document.getElementById('login-section');
-            
-            const filteredSections = data.sections.filter(s => s.year === selectedYear);
-            
-            sectionSelect.innerHTML = filteredSections.map(s => 
-                `<option value="${s.name}">${s.name}</option>`
-            ).join('') || '<option value="">-- No Sections --</option>';
-        },
-
-        submitStudentLogin: () => {
-            const data = DB.getCollege(App.college);
-            const yr = document.getElementById('login-year').value;
-            const nm = document.getElementById('login-section').value;
-            const roll = document.getElementById('login-roll').value;
-
-            if(!yr || !nm || !roll) return alert("Please fill all fields");
-
-            const sectionId = `${yr}-${nm}`;
-            const userId = `S-${sectionId}-${roll}`;
-            const existingPass = data.user_vault[userId];
-
-            if(!existingPass) {
-                const newPass = prompt("New Student Account! Set your password:");
-                if(newPass) {
-                    DB.updateCollege(App.college, d => d.user_vault[userId] = newPass);
-                    App.user = { sectionId, roll };
-                    document.getElementById('login-modal').remove();
-                    App.route('student');
-                }
-            } else {
-                const passAttempt = prompt("Enter your password:");
-                if(passAttempt === existingPass) {
-                    App.user = { sectionId, roll };
-                    document.getElementById('login-modal').remove();
-                    App.route('student');
-                } else {
-                    alert("Incorrect Password");
-                }
-            }
-        },
             updateCell: (id, field, val) => {
-                DB.updateCollege(App.college, d => {
-                    if(!d.schedule[id]) d.schedule[id] = {};
-                    d.schedule[id][field] = val;
-                });
+                DB.updateCollege(App.college, d => { if(!d.schedule[id]) d.schedule[id] = {}; d.schedule[id][field] = val; });
             },
             markAtt: (sKey, cId) => {
-                DB.updateCollege(App.college, d => {
-                    if(!d.attendance[sKey]) d.attendance[sKey] = {};
-                    d.attendance[sKey][cId] = !d.attendance[sKey][cId];
-                });
+                DB.updateCollege(App.college, d => { if(!d.attendance[sKey]) d.attendance[sKey] = {}; d.attendance[sKey][cId] = !d.attendance[sKey][cId]; });
             }
         };
 
@@ -513,10 +452,7 @@
             if(target && !Interaction.longPressed && Interaction.timer) {
                 clearTimeout(Interaction.timer);
                 const id = target.getAttribute('onmousedown').match(/'(.*?)'/)[1];
-                DB.updateCollege(App.college, d => {
-                    if(d.cancelled[id]) delete d.cancelled[id];
-                    else d.cancelled[id] = true;
-                });
+                DB.updateCollege(App.college, d => { if(d.cancelled[id]) delete d.cancelled[id]; else d.cancelled[id] = true; });
             }
             Interaction.timer = null;
         });
