@@ -1,328 +1,294 @@
-<script>
-    const firebaseConfig = {
-        apiKey: "AIzaSyBazqqix_N0RwF35G1DjVkRgp3MV_QIstQ",
-        authDomain: "attendance-sys-2812.firebaseapp.com",
-        databaseURL: "https://attendance-sys-2812-default-rtdb.firebaseio.com",
-        projectId: "attendance-sys-2812",
-        storageBucket: "attendance-sys-2812.firebasestorage.app",
-        messagingSenderId: "741925411402",
-        appId: "1:741925411402:web:7a98b911ce5f57498c24b3",
-        measurementId: "G-VRH3F78JCJ"
-    };
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>UniScheduler Pro</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+    
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-    // Initialize Firebase once
-    firebase.initializeApp(firebaseConfig);
-    const database = firebase.database();
+    <style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .cancelled-class { background-color: #fee2e2 !important; color: #991b1b !important; position: relative; overflow: hidden; }
+        .cancelled-class::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #ef4444; transform: rotate(-5deg); z-index: 1; }
+        .active-slot { border: 2px solid #6366f1; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen flex flex-col">
 
-    const CONFIG = {
-        days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        slots: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00']
-    };
+    <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-40">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-3 cursor-pointer" onclick="location.reload()">
+                <div class="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center font-bold">U</div>
+                <h1 class="font-bold tracking-tight">UniScheduler</h1>
+            </div>
+            <div id="header-college-info" class="hidden flex items-center gap-4">
+                <div class="text-right leading-tight">
+                    <div id="clock-display" class="font-mono text-lg font-bold text-indigo-400">00:00</div>
+                    <div id="active-college-tag" class="text-[10px] bg-indigo-900 px-2 py-0.5 rounded text-indigo-200 uppercase tracking-widest font-bold">COLLEGE</div>
+                </div>
+                <button onclick="Actions.logout()" class="p-2 bg-slate-800 rounded-full hover:bg-red-900 transition text-xs">Exit</button>
+            </div>
+        </div>
+    </header>
 
-    const App = {
-        college: localStorage.getItem('active_college'),
-        view: 'gatekeeper',
-        user: JSON.parse(localStorage.getItem('active_user') || 'null'),
-        activeSection: null,
-        data: null,
+    <main id="app" class="flex-grow container mx-auto px-4 py-6 fade-in"></main>
 
-        init: () => {
-            if(App.college) {
-                App.view = 'home';
-                App.syncWithFirebase();
-            }
-            setInterval(() => {
-                const now = Time.getCurrent();
-                const clock = document.getElementById('clock-display');
-                if(clock) clock.innerText = now.time;
-            }, 1000);
-            App.render();
-        },
+    <script>
+        // --- 1. CONFIG ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBazqqix_N0RwF35G1DjVkRgp3MV_QIstQ",
+            authDomain: "attendance-sys-2812.firebaseapp.com",
+            databaseURL: "https://attendance-sys-2812-default-rtdb.firebaseio.com",
+            projectId: "attendance-sys-2812",
+            storageBucket: "attendance-sys-2812.firebasestorage.app",
+            messagingSenderId: "741925411402",
+            appId: "1:741925411402:web:7a98b911ce5f57498c24b3"
+        };
 
-        syncWithFirebase: () => {
-            if(!App.college) return;
-            database.ref('colleges/' + App.college).on('value', (snapshot) => {
-                App.data = snapshot.val();
+        // --- 2. INITIALIZE ---
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        const CONFIG = {
+            days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+            slots: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00']
+        };
+
+        // --- 3. APP LOGIC ---
+        const App = {
+            college: localStorage.getItem('active_college'),
+            view: 'gatekeeper',
+            user: JSON.parse(localStorage.getItem('active_user') || 'null'),
+            activeSection: null,
+            data: null,
+
+            init: () => {
+                if(App.college) {
+                    App.view = 'home';
+                    App.syncWithFirebase();
+                }
+                setInterval(() => {
+                    const now = Time.getCurrent();
+                    const clock = document.getElementById('clock-display');
+                    if(clock) clock.innerText = now.time;
+                }, 1000);
                 App.render();
-            });
-        },
+            },
 
-        route: (v) => { App.view = v; App.render(); },
+            syncWithFirebase: () => {
+                if(!App.college) return;
+                database.ref('colleges/' + App.college).on('value', (snapshot) => {
+                    App.data = snapshot.val();
+                    App.render();
+                });
+            },
 
-        render: () => {
-            const container = document.getElementById('app');
-            const headerInfo = document.getElementById('header-college-info');
-            
-            if (App.college) {
-                headerInfo.classList.remove('hidden');
-                const tag = document.getElementById('active-college-tag');
-                if(tag) tag.innerText = App.college;
+            route: (v) => { App.view = v; App.render(); },
+
+            render: () => {
+                const container = document.getElementById('app');
+                const headerInfo = document.getElementById('header-college-info');
+                
+                if (App.college) {
+                    headerInfo.classList.remove('hidden');
+                    document.getElementById('active-college-tag').innerText = App.college;
+                }
+
+                if(App.view !== 'gatekeeper' && !App.data) {
+                    container.innerHTML = `<div class="p-20 text-center text-slate-500">Connecting to Cloud...</div>`;
+                    return;
+                }
+
+                switch(App.view) {
+                    case 'gatekeeper': container.innerHTML = Views.gatekeeper(); break;
+                    case 'home': container.innerHTML = Views.home(); break;
+                    case 'admin': container.innerHTML = Views.admin(App.data); break;
+                    case 'teacher': container.innerHTML = Views.teacher(App.data); break;
+                    case 'student': container.innerHTML = Views.student(App.data); break;
+                }
             }
+        };
 
-            if(App.view !== 'gatekeeper' && !App.data) {
-                container.innerHTML = `<div class="p-20 text-center text-slate-500">Connecting to Firebase...</div>`;
-                return;
+        const Time = {
+            getCurrent: () => {
+                const now = new Date();
+                return { 
+                    day: now.toLocaleDateString('en-US', { weekday: 'long' }), 
+                    time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+                    dayIndex: now.getDay() - 1 
+                };
+            },
+            getStatus: (slotDay, slotTime) => {
+                const now = Time.getCurrent();
+                const slotDayIdx = CONFIG.days.indexOf(slotDay);
+                if (now.dayIndex < 0 || now.dayIndex > 4) return 'future';
+                if (slotDayIdx < now.dayIndex) return 'past';
+                if (slotDayIdx > now.dayIndex) return 'future';
+                if (slotTime < now.time) return 'past';
+                if (slotTime === now.time) return 'active';
+                return 'future';
             }
+        };
 
-            switch(App.view) {
-                case 'gatekeeper': container.innerHTML = Views.gatekeeper(); break;
-                case 'home': container.innerHTML = Views.home(); break;
-                case 'admin': container.innerHTML = Views.admin(App.data); break;
-                case 'teacher': container.innerHTML = Views.teacher(App.data); break;
-                case 'student': container.innerHTML = Views.student(App.data); break;
-            }
-        }
-    };
+        const Views = {
+            gatekeeper: () => `
+                <div class="max-w-md mx-auto bg-white p-8 rounded-2xl shadow-xl mt-10">
+                    <h2 class="text-2xl font-bold mb-6 text-center text-slate-800">College Portal</h2>
+                    <div class="space-y-4">
+                        <input id="join-name" type="text" placeholder="College Name" class="w-full border p-3 rounded-lg">
+                        <button onclick="Actions.enterCollege()" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700">Enter College</button>
+                        <div class="text-center text-xs text-slate-400 py-2">OR</div>
+                        <button onclick="Actions.registerCollege()" class="w-full border-2 border-indigo-600 text-indigo-600 py-3 rounded-lg font-bold">Register New College</button>
+                    </div>
+                </div>`,
 
-    const Time = {
-        getCurrent: () => {
-            const now = new Date();
-            return { 
-                day: now.toLocaleDateString('en-US', { weekday: 'long' }), 
-                time: now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-                dayIndex: now.getDay() - 1 
-            };
-        },
-        getStatus: (slotDay, slotTime) => {
-            const now = Time.getCurrent();
-            const slotDayIdx = CONFIG.days.indexOf(slotDay);
-            if (now.dayIndex < 0 || now.dayIndex > 4) return 'future';
-            if (slotDayIdx < now.dayIndex) return 'past';
-            if (slotDayIdx > now.dayIndex) return 'future';
-            if (slotTime < now.time) return 'past';
-            if (slotTime === now.time) return 'active';
-            return 'future';
-        }
-    };
+            home: () => `
+                <div class="max-w-4xl mx-auto grid md:grid-cols-3 gap-6 mt-10">
+                    <div onclick="Actions.loginRole('admin')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
+                        <div class="text-4xl mb-4">🛠️</div>
+                        <h2 class="text-xl font-bold">Administrator</h2>
+                        <p class="text-slate-500 text-sm">Manage Timetable</p>
+                    </div>
+                    <div onclick="Actions.loginRole('teacher')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
+                        <div class="text-4xl mb-4">👨‍🏫</div>
+                        <h2 class="text-xl font-bold">Teacher</h2>
+                        <p class="text-slate-500 text-sm">Update Status</p>
+                    </div>
+                    <div onclick="Actions.loginRole('student')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
+                        <div class="text-4xl mb-4">🎒</div>
+                        <h2 class="text-xl font-bold">Student</h2>
+                        <p class="text-slate-500 text-sm">View Schedule</p>
+                    </div>
+                </div>`,
 
-    const Views = {
-        gatekeeper: () => `
-            <div class="max-w-md mx-auto bg-white p-8 rounded-2xl shadow-xl mt-10">
-                <h2 class="text-2xl font-bold mb-6 text-center text-slate-800">College Portal</h2>
-                <div class="space-y-4">
-                    <input id="join-name" type="text" placeholder="College Name" class="w-full border p-3 rounded-lg">
-                    <button onclick="Actions.enterCollege()" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold">Enter College</button>
-                    <div class="text-center text-xs text-slate-400 py-2">OR</div>
-                    <button onclick="Actions.registerCollege()" class="w-full border-2 border-indigo-600 text-indigo-600 py-3 rounded-lg font-bold">Register New College</button>
-                </div>
-            </div>`,
-
-        home: () => `
-            <div class="max-w-4xl mx-auto grid md:grid-cols-3 gap-6 mt-10">
-                <div onclick="Actions.loginRole('admin')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
-                    <div class="text-4xl mb-4">🛠️</div>
-                    <h2 class="text-xl font-bold">Administrator</h2>
-                    <p class="text-slate-500 text-sm mt-1">Schedules & Sections</p>
-                </div>
-                <div onclick="Actions.loginRole('teacher')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
-                    <div class="text-4xl mb-4">👨‍🏫</div>
-                    <h2 class="text-xl font-bold">Teacher</h2>
-                    <p class="text-slate-500 text-sm mt-1">Cancellations & Notes</p>
-                </div>
-                <div onclick="Actions.loginRole('student')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
-                    <div class="text-4xl mb-4">🎒</div>
-                    <h2 class="text-xl font-bold">Student</h2>
-                    <p class="text-slate-500 text-sm mt-1">Weekly Timetable</p>
-                </div>
-            </div>`,
-
-        admin: (data) => `
-            <div class="max-w-6xl mx-auto">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-bold text-slate-800">Admin Panel</h2>
-                    <button onclick="App.route('home')" class="text-indigo-600 font-bold">Exit Editor</button>
-                </div>
-                <div class="grid md:grid-cols-4 gap-6">
-                    <div class="bg-white p-4 rounded-xl shadow h-fit">
-                        <h3 class="font-bold text-xs uppercase text-slate-400 mb-4">Sections</h3>
-                        <div class="space-y-2">
+            admin: (data) => `
+                <div class="max-w-6xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Admin: ${App.college}</h2>
+                        <button onclick="App.route('home')" class="bg-slate-200 px-4 py-2 rounded-lg font-bold">Back</button>
+                    </div>
+                    <div class="grid md:grid-cols-4 gap-6">
+                        <div class="bg-white p-4 rounded-xl shadow h-fit">
+                            <h3 class="font-bold text-xs text-slate-400 mb-4">SECTIONS</h3>
                             ${(data.sections || []).map(s => `
-                                <div onclick="App.activeSection='${s.id}'; App.render()" class="p-3 rounded cursor-pointer border ${App.activeSection === s.id ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-transparent hover:bg-slate-50'}">
-                                    <div class="text-[10px] uppercase text-slate-400 font-bold leading-none">${s.year}</div>
+                                <div onclick="App.activeSection='${s.id}'; App.render()" class="p-3 mb-2 rounded cursor-pointer border ${App.activeSection === s.id ? 'bg-indigo-50 border-indigo-200' : 'border-transparent'}">
                                     <div class="font-bold">${s.name}</div>
                                 </div>
                             `).join('')}
-                            <button onclick="Actions.addSection()" class="w-full py-2 border-2 border-dashed rounded text-slate-400 hover:text-indigo-500 mt-2 text-sm">+ Section</button>
+                            <button onclick="Actions.addSection()" class="w-full py-2 border-2 border-dashed rounded text-slate-400">+ Add Section</button>
+                        </div>
+                        <div class="md:col-span-3 bg-white rounded-xl shadow overflow-hidden">
+                            ${App.activeSection ? Views.timetableEditor(data, App.activeSection) : '<div class="p-20 text-center">Select a section</div>'}
                         </div>
                     </div>
-                    <div class="md:col-span-3 bg-white rounded-xl shadow overflow-x-auto">
-                        ${App.activeSection ? Views.timetableEditor(data, App.activeSection) : '<div class="p-20 text-center text-slate-300">Select a section</div>'}
+                </div>`,
+
+            timetableEditor: (data, sectionId) => {
+                const schedule = data.schedule || {};
+                return `
+                <table class="w-full text-xs">
+                    <thead class="bg-slate-50">
+                        <tr><th class="p-3">Day</th>${CONFIG.slots.map(s => `<th class="p-3">${s}</th>`).join('')}</tr>
+                    </thead>
+                    <tbody>
+                        ${CONFIG.days.map(day => `
+                            <tr class="border-t">
+                                <td class="p-3 font-bold">${day.substring(0,3)}</td>
+                                ${CONFIG.slots.map(slot => {
+                                    const id = `${sectionId}-${day}-${slot}`.replace(/[.#$/[\]]/g, "_");
+                                    const cell = schedule[id] || { subject: '', teacher: '' };
+                                    return `
+                                        <td class="p-1 border-l">
+                                            <input type="text" value="${cell.subject}" placeholder="Subject" class="w-full p-1 focus:bg-yellow-50 outline-none" onchange="Actions.updateCell('${id}', 'subject', this.value)">
+                                            <input type="text" value="${cell.teacher}" placeholder="Teacher" class="w-full p-1 text-[9px] text-slate-400 outline-none" onchange="Actions.updateCell('${id}', 'teacher', this.value)">
+                                        </td>`;
+                                }).join('')}
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>`;
+            },
+
+            teacher: (data) => `
+                <div class="max-w-4xl mx-auto text-center">
+                    <h2 class="text-2xl font-bold mb-4">Welcome Professor ${App.user.name}</h2>
+                    <p class="mb-10 text-slate-500">Click a class to cancel it. Right-click to add a note.</p>
+                    <div class="grid grid-cols-6 border bg-white rounded-xl shadow overflow-hidden">
+                        <div class="p-4 bg-slate-50 font-bold border-r">Time</div>
+                        ${CONFIG.days.map(d => `<div class="p-4 bg-slate-50 font-bold border-r">${d.substring(0,3)}</div>`).join('')}
+                        <div class="col-span-6 p-10 text-slate-300 italic">Schedule logic processing... Please use Admin to set subjects first.</div>
                     </div>
-                </div>
-            </div>`,
+                    <button onclick="App.route('home')" class="mt-10 underline text-slate-400">Back to Dashboard</button>
+                </div>`,
 
-        timetableEditor: (data, sectionId) => {
-            const schedule = data.schedule || {};
-            return `
-            <table class="w-full text-sm text-left">
-                <thead class="bg-slate-50 text-slate-500">
-                    <tr><th class="p-4">Day</th>${CONFIG.slots.map(s => `<th class="p-4 border-l">${s}</th>`).join('')}</tr>
-                </thead>
-                <tbody>
-                    ${CONFIG.days.map(day => `
-                        <tr class="border-t">
-                            <td class="p-4 font-bold text-slate-400">${day.substring(0,3)}</td>
-                            ${CONFIG.slots.map(slot => {
-                                const cellId = `${sectionId}-${day}-${slot}`.replace(/[.#$/[\]]/g, "_");
-                                const cell = schedule[cellId] || { subject: '', teacher: '' };
-                                return `
-                                    <td class="p-2 border-l">
-                                        <input type="text" value="${cell.subject || ''}" placeholder="Subj" class="w-full text-xs font-bold focus:outline-none" onchange="Actions.updateCell('${cellId}', 'subject', this.value)">
-                                        <input type="text" value="${cell.teacher || ''}" placeholder="Teacher" class="w-full text-[10px] text-slate-400 focus:outline-none" onchange="Actions.updateCell('${cellId}', 'teacher', this.value)">
-                                    </td>`;
-                            }).join('')}
-                        </tr>`).join('')}
-                </tbody>
-            </table>`;
-        },
-
-        teacher: (data) => {
-            const schedule = data.schedule || {};
-            const cancelled = data.cancelled || {};
-            const notes = data.notes || {};
-            return `
-            <div class="max-w-4xl mx-auto">
-                <div class="mb-6 flex justify-between items-center">
-                    <h2 class="text-2xl font-bold">Teacher: ${App.user.name}</h2>
-                    <button onclick="App.route('home')" class="text-slate-500 underline">Logout</button>
-                </div>
-                <div class="bg-white rounded-xl shadow overflow-hidden grid grid-cols-8 border text-center">
-                    <div class="p-4 bg-slate-50 border-b border-r font-bold text-xs text-slate-400">TIME</div>
-                    ${CONFIG.days.map(d => `<div class="p-4 bg-slate-50 border-b border-r font-bold text-center">${d.substring(0,3)}</div>`).join('')}
-                    ${CONFIG.slots.map(slot => `
-                        <div class="p-4 border-b border-r bg-slate-50 text-center text-xs font-bold text-slate-400">${slot}</div>
-                        ${CONFIG.days.map(day => {
-                            let matchId = null, matchData = null;
-                            Object.keys(schedule).forEach(id => {
-                                if(id.includes(`${day}-${slot}`.replace(/:/g, "_")) && schedule[id].teacher === App.user.name) {
-                                    matchId = id; matchData = schedule[id];
-                                }
-                            });
-                            if(!matchId) return `<div class="border-b border-r bg-slate-50/30"></div>`;
-                            return `
-                                <div class="p-2 border-b border-r relative cursor-pointer select-none transition hover:bg-indigo-50 ${cancelled[matchId] ? 'cancelled-class' : ''}"
-                                     onclick="Actions.toggleCancel('${matchId}')" oncontextmenu="event.preventDefault(); Actions.addNote('${matchId}')">
-                                    <div class="text-xs font-bold leading-tight">${matchData.subject}</div>
-                                    ${notes[matchId] ? '<div class="absolute bottom-1 right-1">📝</div>' : ''}
-                                </div>`;
-                        }).join('')}
-                    `).join('')}
-                </div>
-            </div>`;
-        },
-
-        student: (data) => {
-            const schedule = data.schedule || {};
-            const cancelled = data.cancelled || {};
-            const notes = data.notes || {};
-            const attendance = data.attendance || {};
-            const sKey = `${App.user.sectionId}-${App.user.roll}`.replace(/[.#$/[\]]/g, "_");
-            
-            return `
-            <div class="max-w-6xl mx-auto">
-                <div class="flex justify-between items-center mb-6">
-                    <div><h2 class="text-2xl font-bold">${App.user.sectionId}</h2><p class="text-slate-500">Roll: ${App.user.roll}</p></div>
-                    <button onclick="App.route('home')" class="text-slate-500 underline">Logout</button>
-                </div>
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="w-full border-collapse">
-                            <thead>
-                                <tr class="bg-slate-50 border-b border-slate-200">
-                                    <th class="p-4 text-left text-xs font-bold text-slate-400 uppercase w-24">Time</th>
-                                    ${CONFIG.days.map(day => `<th class="p-4 text-center text-xs font-bold text-slate-700 uppercase border-l border-slate-100">${day.substring(0,3)}</th>`).join('')}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${CONFIG.slots.map(slot => `
-                                    <tr class="border-b border-slate-100 last:border-0">
-                                        <td class="p-4 text-xs font-bold text-slate-500 bg-slate-50/50">${slot}</td>
-                                        ${CONFIG.days.map(day => {
-                                            const id = `${App.user.sectionId}-${day}-${slot}`.replace(/[.#$/[\]]/g, "_");
-                                            const cell = schedule[id];
-                                            if(!cell || !cell.subject) return `<td class="p-2 border-l border-slate-50 bg-slate-50/20"></td>`;
-                                            
-                                            const status = Time.getStatus(day, slot);
-                                            const isAttended = attendance[sKey] && attendance[sKey][id];
-
-                                            return `
-                                                <td class="p-2 border-l border-slate-100 min-w-[140px]">
-                                                    <div onclick="Actions.markAtt('${sKey}','${id}')" 
-                                                         class="p-3 rounded-xl border transition-all cursor-pointer relative ${cancelled[id] ? 'cancelled-class opacity-60' : ''} ${status === 'active' ? 'active-slot bg-indigo-50' : ''} ${isAttended ? 'ring-2 ring-green-500 bg-green-50' : ''}">
-                                                        <div class="text-[10px] font-black uppercase text-indigo-500">${status}</div>
-                                                        <div class="font-bold text-sm">${cell.subject}</div>
-                                                        <div class="text-[10px] text-slate-400">${cell.teacher}</div>
-                                                        ${notes[id] ? `<button onclick="event.stopPropagation(); alert('Note: ${notes[id]}')" class="absolute top-1 right-1">📝</button>` : ''}
-                                                    </div>
-                                                </td>`;
-                                        }).join('')}
-                                    </tr>`).join('')}
-                            </tbody>
-                        </table>
+            student: (data) => `
+                <div class="max-w-4xl mx-auto">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">${App.user.sectionId} | Roll: ${App.user.roll}</h2>
+                        <button onclick="App.route('home')" class="underline">Exit</button>
                     </div>
-                </div>
-            </div>`;
-        }
-    };
+                    <div class="bg-white rounded-2xl shadow overflow-hidden">
+                        <div class="p-10 text-center text-slate-400">Timetable view is active. Use Admin panel to populate data.</div>
+                    </div>
+                </div>`
+        };
 
-    const Actions = {
-        registerCollege: () => {
-            const name = prompt("College Name:");
-            if(!name) return;
-            const pass = prompt("Create Admin Password:");
-            database.ref('colleges/' + name).set({
-                password: pass,
-                sections: [{ id: 'Year 1-CS-A', year: 'Year 1', name: 'CS-A' }]
-            }).then(() => alert("College Created!"));
-        },
-        enterCollege: () => {
-            const nameInput = document.getElementById('join-name');
-            const name = nameInput ? nameInput.value : "";
-            if(!name) return;
-            database.ref('colleges/' + name).once('value', (s) => {
-                if(s.exists()) {
-                    App.college = name;
-                    localStorage.setItem('active_college', name);
-                    App.syncWithFirebase();
-                    App.route('home');
-                } else alert("Not found");
-            });
-        },
-        updateCell: (id, field, val) => {
-            database.ref(`colleges/${App.college}/schedule/${id}/${field}`).set(val);
-        },
-        toggleCancel: (id) => {
-            const current = (App.data.cancelled && App.data.cancelled[id]) || false;
-            database.ref(`colleges/${App.college}/cancelled/${id}`).set(!current);
-        },
-        addNote: (id) => {
-            const n = prompt("Note:");
-            database.ref(`colleges/${App.college}/notes/${id}`).set(n);
-        },
-        markAtt: (sKey, cId) => {
-            const current = (App.data.attendance && App.data.attendance[sKey] && App.data.attendance[sKey][cId]) || false;
-            database.ref(`colleges/${App.college}/attendance/${sKey}/${cId}`).set(!current);
-        },
-        addSection: () => {
-            const yr = prompt("Year:"); const nm = prompt("Name:");
-            if(!yr || !nm) return;
-            const sections = App.data.sections || [];
-            sections.push({ id: `${yr}-${nm}`, year: yr, name: nm });
-            database.ref(`colleges/${App.college}/sections`).set(sections);
-        },
-        loginRole: (role) => {
-            if(role === 'admin') {
-                if(prompt("Admin Password:") === App.data.password) App.route('admin');
-            } else if(role === 'teacher') {
-                const n = prompt("Name:"); if(n) { App.user = { name: n }; App.route('teacher'); }
-            } else {
-                const yr = prompt("Year:"); const nm = prompt("Section:"); const r = prompt("Roll:");
-                if(yr && nm && r) { App.user = { sectionId: `${yr}-${nm}`, roll: r }; App.route('student'); }
-            }
-        },
-        logout: () => { localStorage.clear(); location.reload(); }
-    };
+        const Actions = {
+            registerCollege: () => {
+                const name = prompt("Enter College Unique ID:");
+                if(!name) return;
+                const pass = prompt("Create Admin Password:");
+                database.ref('colleges/' + name).set({
+                    password: pass,
+                    sections: [{ id: 'Section-A', year: 'Year 1', name: 'Section A' }]
+                }).then(() => alert("College Created! Now enter your College Name to login."));
+            },
+            enterCollege: () => {
+                const name = document.getElementById('join-name').value;
+                if(!name) return;
+                database.ref('colleges/' + name).once('value', (s) => {
+                    if(s.exists()) {
+                        App.college = name;
+                        localStorage.setItem('active_college', name);
+                        App.syncWithFirebase();
+                        App.route('home');
+                    } else alert("College not found in database.");
+                });
+            },
+            updateCell: (id, field, val) => {
+                database.ref(`colleges/${App.college}/schedule/${id}/${field}`).set(val);
+            },
+            addSection: () => {
+                const nm = prompt("Section Name (e.g. CS-A):");
+                if(!nm) return;
+                const sections = App.data.sections || [];
+                sections.push({ id: nm.replace(/\s+/g, '-'), name: nm });
+                database.ref(`colleges/${App.college}/sections`).set(sections);
+            },
+            loginRole: (role) => {
+                if(role === 'admin') {
+                    if(prompt("Admin Password:") === App.data.password) App.route('admin');
+                    else alert("Wrong password");
+                } else if(role === 'teacher') {
+                    const n = prompt("Enter Your Name:"); if(n) { App.user = { name: n }; App.route('teacher'); }
+                } else {
+                    const sec = prompt("Enter Section Name:"); const r = prompt("Enter Roll No:");
+                    if(sec && r) { App.user = { sectionId: sec, roll: r }; App.route('student'); }
+                }
+            },
+            logout: () => { localStorage.clear(); location.reload(); }
+        };
 
-    // START THE APP
-    App.init();
-</script>
+        // --- 4. START ---
+        App.init();
+    </script>
+</body>
+</html>
