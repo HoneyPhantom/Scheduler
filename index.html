@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>UniScheduler Pro | Firebase</title>
+    <title>UniScheduler Pro | Live Sync</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -13,14 +13,12 @@
 
     <style>
         body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .cancelled-class { background-color: #fee2e2 !important; color: #991b1b !important; position: relative; overflow: hidden; }
-        .cancelled-class::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #ef4444; transform: rotate(-5deg); z-index: 1; }
+        .cancelled-class { background-color: #fee2e2 !important; color: #991b1b !important; position: relative; }
+        .cancelled-class::before { content: 'CANCELLED'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-15deg); font-weight: 900; font-size: 0.6rem; opacity: 0.2; letter-spacing: 2px; }
         .active-slot { border: 2px solid #6366f1; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } 70% { box-shadow: 0 0 0 6px rgba(99, 102, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } }
         .fade-in { animation: fadeIn 0.3s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        .overflow-x-auto::-webkit-scrollbar { height: 6px; }
-        .overflow-x-auto::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex flex-col">
@@ -28,15 +26,15 @@
     <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-40">
         <div class="container mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center gap-3 cursor-pointer" onclick="App.route('gatekeeper')">
-                <div class="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center font-bold">U</div>
-                <h1 class="font-bold tracking-tight hidden sm:block">UniScheduler</h1>
+                <div class="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center font-bold text-white">U</div>
+                <h1 class="font-bold tracking-tight hidden sm:block italic">UniScheduler</h1>
             </div>
             <div id="header-college-info" class="hidden flex items-center gap-4">
                 <div class="text-right leading-tight">
                     <div id="clock-display" class="font-mono text-lg font-bold text-indigo-400">00:00</div>
                     <div id="active-college-tag" class="text-[10px] bg-indigo-900 px-2 py-0.5 rounded text-indigo-200 uppercase tracking-widest font-bold">COLLEGE</div>
                 </div>
-                <button onclick="Actions.logout()" class="p-2 bg-slate-800 rounded-full hover:bg-red-900 transition text-xs">Exit College</button>
+                <button onclick="Actions.logout()" class="p-2 bg-slate-800 rounded-lg hover:bg-red-900 transition text-xs font-bold">EXIT</button>
             </div>
         </div>
     </header>
@@ -44,7 +42,7 @@
     <main id="app" class="flex-grow container mx-auto px-4 py-6 fade-in"></main>
 
     <script>
-        // --- 2. FIREBASE CONFIGURATION ---
+        // --- 1. CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyBazqqix_N0RwF35G1DjVkRgp3MV_QIstQ",
             authDomain: "attendance-sys-2812.firebaseapp.com",
@@ -55,7 +53,6 @@
             appId: "1:741925411402:web:7a98b911ce5f57498c24b3"
         };
 
-        // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
@@ -64,24 +61,15 @@
             slots: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00']
         };
 
-        // --- UPDATED DATABASE WRAPPER ---
+        // --- 2. DATABASE HANDLER ---
         const DB = {
-            sync: (collegeName) => {
-                if(!collegeName) return;
-                // 'on' creates a permanent bridge. When Firebase changes, App.render() runs automatically.
-                database.ref('colleges/' + collegeName).on('value', (snapshot) => {
-                    const val = snapshot.val();
-                    if (val) {
-                        App.collegeData = val;
-                        App.render(); 
-                    }
-                }, (error) => {
-                    console.error("Firebase Sync Error:", error);
+            sync: (name) => {
+                database.ref('colleges/' + name).on('value', (snap) => {
+                    App.collegeData = snap.val() || {};
+                    App.render();
                 });
             },
             update: (path, val) => {
-                if(!App.college) return;
-                // Using .update() or .set() ensures the cloud is the "Source of Truth"
                 return database.ref(`colleges/${App.college}/${path}`).set(val);
             }
         };
@@ -101,18 +89,16 @@
                 if (now.dayIndex < 0 || now.dayIndex > 4) return 'future';
                 if (slotDayIdx < now.dayIndex) return 'past';
                 if (slotDayIdx > now.dayIndex) return 'future';
-                if (slotTime < now.time) return 'past';
-                if (slotTime === now.time) return 'active';
-                return 'future';
+                return (slotTime < now.time) ? 'past' : (slotTime === now.time ? 'active' : 'future');
             }
         };
 
+        // --- 3. APP CORE ---
         const App = {
             college: localStorage.getItem('active_college'),
             collegeData: null,
             view: 'gatekeeper',
             user: JSON.parse(localStorage.getItem('active_user') || 'null'),
-            activeSection: null,
 
             init: () => {
                 if(App.college) {
@@ -120,9 +106,8 @@
                     DB.sync(App.college);
                 }
                 setInterval(() => {
-                    const now = Time.getCurrent();
                     const clock = document.getElementById('clock-display');
-                    if(clock) clock.innerText = now.time;
+                    if(clock) clock.innerText = Time.getCurrent().time;
                 }, 1000);
                 App.render();
             },
@@ -136,101 +121,84 @@
                 if (App.college) {
                     headerInfo.classList.remove('hidden');
                     document.getElementById('active-college-tag').innerText = App.college;
-                } else {
-                    headerInfo.classList.add('hidden');
                 }
 
                 if(App.view !== 'gatekeeper' && !App.collegeData) {
-                    container.innerHTML = `<div class="p-20 text-center text-slate-400">Loading Cloud Data...</div>`;
+                    container.innerHTML = `<div class="p-20 text-center text-slate-400">Connecting to Cloud...</div>`;
                     return;
                 }
-
-                const data = App.collegeData;
 
                 switch(App.view) {
                     case 'gatekeeper': container.innerHTML = Views.gatekeeper(); break;
                     case 'home': container.innerHTML = Views.home(); break;
-                    case 'admin': container.innerHTML = Views.admin(data); break;
-                    case 'teacher': container.innerHTML = Views.teacher(data); break;
-                    case 'student': container.innerHTML = Views.student(data); break;
+                    case 'admin': container.innerHTML = Views.admin(App.collegeData); break;
+                    case 'teacher': container.innerHTML = Views.teacher(App.collegeData); break;
+                    case 'student': container.innerHTML = Views.student(App.collegeData); break;
                 }
             }
         };
 
+        // --- 4. VIEWS ---
         const Views = {
             gatekeeper: () => `
                 <div class="max-w-md mx-auto bg-white p-8 rounded-2xl shadow-xl mt-10">
                     <h2 class="text-2xl font-bold mb-6 text-center text-slate-800">College Portal</h2>
-                    <div class="space-y-4">
-                        <input id="join-name" type="text" placeholder="College Name" class="w-full border p-3 rounded-lg">
-                        <button onclick="Actions.enterCollege()" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold">Enter College</button>
-                        <div class="text-center text-xs text-slate-400 py-2">OR</div>
-                        <button onclick="Actions.registerCollege()" class="w-full border-2 border-indigo-600 text-indigo-600 py-3 rounded-lg font-bold">Register New College</button>
-                    </div>
+                    <input id="join-name" type="text" placeholder="College Name" class="w-full border p-3 rounded-lg mb-4">
+                    <button onclick="Actions.enterCollege()" class="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold">Enter</button>
+                    <div class="text-center py-4 text-xs text-slate-400 uppercase font-bold">Or</div>
+                    <button onclick="Actions.registerCollege()" class="w-full border-2 border-indigo-600 text-indigo-600 py-3 rounded-lg font-bold">Register New</button>
                 </div>`,
 
             home: () => `
                 <div class="max-w-4xl mx-auto grid md:grid-cols-3 gap-6 mt-10">
-                    <div onclick="Actions.loginRole('admin')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
-                        <div class="text-4xl mb-4">🛠️</div>
-                        <h2 class="text-xl font-bold">Administrator</h2>
-                        <p class="text-slate-500 text-sm mt-1">Manage sections & schedules</p>
+                    <div onclick="Actions.loginRole('admin')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer transition">
+                        <div class="text-4xl mb-4">🛠️</div><h2 class="text-xl font-bold">Administrator</h2>
                     </div>
-                    <div onclick="Actions.loginRole('teacher')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
-                        <div class="text-4xl mb-4">👨‍🏫</div>
-                        <h2 class="text-xl font-bold">Teacher</h2>
-                        <p class="text-slate-500 text-sm mt-1">Cancel classes & add notes</p>
+                    <div onclick="Actions.loginRole('teacher')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer transition">
+                        <div class="text-4xl mb-4">👨‍🏫</div><h2 class="text-xl font-bold">Teacher</h2>
                     </div>
-                    <div onclick="Actions.loginRole('student')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer">
-                        <div class="text-4xl mb-4">🎒</div>
-                        <h2 class="text-xl font-bold">Student</h2>
-                        <p class="text-slate-500 text-sm mt-1">View schedule & attendance</p>
+                    <div onclick="Actions.loginRole('student')" class="bg-white p-8 rounded-2xl shadow hover:ring-2 ring-indigo-500 cursor-pointer transition">
+                        <div class="text-4xl mb-4">🎒</div><h2 class="text-xl font-bold">Student</h2>
                     </div>
                 </div>`,
 
             admin: (data) => `
                 <div class="max-w-6xl mx-auto">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-2xl font-bold text-slate-800">Admin Panel: ${App.college}</h2>
-                        <button onclick="App.route('home')" class="text-indigo-600 font-bold">Exit Editor</button>
+                    <div class="flex justify-between mb-6">
+                        <h2 class="text-2xl font-bold">Editor: ${App.college}</h2>
+                        <button onclick="App.route('home')" class="text-indigo-600 font-bold">Exit</button>
                     </div>
                     <div class="grid md:grid-cols-4 gap-6">
                         <div class="bg-white p-4 rounded-xl shadow h-fit">
-                            <h3 class="font-bold text-xs uppercase text-slate-400 mb-4">Sections</h3>
-                            <div class="space-y-2">
-                                ${(data.sections || []).map(s => `
-                                    <div onclick="App.activeSection='${s.id}'; App.render()" class="p-3 rounded cursor-pointer border ${App.activeSection === s.id ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'border-transparent hover:bg-slate-50'}">
-                                        <div class="text-[10px] uppercase text-slate-400 font-bold leading-none">${s.year}</div>
-                                        <div class="font-bold">${s.name}</div>
-                                    </div>
-                                `).join('')}
-                                <button onclick="Actions.addSection()" class="w-full py-2 border-2 border-dashed rounded text-slate-400 hover:text-indigo-500 mt-2 text-sm">+ Section</button>
-                            </div>
+                            <h3 class="text-xs font-black text-slate-400 uppercase mb-4 tracking-widest">Sections</h3>
+                            ${(data.sections || []).map(s => `
+                                <div onclick="App.activeSection='${s.id}'; App.render()" class="p-3 mb-2 rounded border cursor-pointer transition ${App.activeSection === s.id ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'hover:bg-slate-50'}">
+                                    <div class="text-[10px] font-bold opacity-50">${s.year}</div>
+                                    <div class="font-bold">${s.name}</div>
+                                </div>
+                            `).join('')}
+                            <button onclick="Actions.addSection()" class="w-full border-2 border-dashed p-2 mt-2 text-slate-400 rounded hover:text-indigo-600 transition">+ Add Section</button>
                         </div>
-                        <div class="md:col-span-3 bg-white rounded-xl shadow overflow-x-auto">
-                            ${App.activeSection ? Views.timetableEditor(data, App.activeSection) : '<div class="p-20 text-center text-slate-300">Select a section to manage schedule</div>'}
+                        <div class="md:col-span-3 bg-white rounded-xl shadow overflow-x-auto p-4">
+                            ${App.activeSection ? Views.editorTable(data, App.activeSection) : '<div class="p-20 text-center text-slate-300 italic">Select a section to edit its schedule</div>'}
                         </div>
                     </div>
                 </div>`,
 
-            timetableEditor: (data, sectionId) => `
-                <table class="w-full text-sm text-left">
-                    <thead class="bg-slate-50 text-slate-500">
-                        <tr><th class="p-4">Day</th>${CONFIG.slots.map(s => `<th class="p-4 border-l">${s}</th>`).join('')}</tr>
-                    </thead>
+            editorTable: (data, secId) => `
+                <table class="w-full text-sm">
+                    <thead><tr><th class="p-2 text-left text-slate-400 uppercase text-[10px]">Day</th>${CONFIG.slots.map(s=>`<th class="p-2 text-slate-400 text-[10px] uppercase font-black">${s}</th>`).join('')}</tr></thead>
                     <tbody>
                         ${CONFIG.days.map(day => `
-                            <tr class="border-t">
-                                <td class="p-4 font-bold text-slate-400">${day.substring(0,3)}</td>
+                            <tr class="border-t border-slate-50">
+                                <td class="font-bold p-3 text-slate-400 bg-slate-50/50">${day.substring(0,3)}</td>
                                 ${CONFIG.slots.map(slot => {
-                                    const cellId = `${sectionId}-${day}-${slot}`.replace(/[.#$/[\]]/g, "_");
-                                    const cell = (data.schedule && data.schedule[cellId]) || { subject: '', teacher: '' };
-                                    return `
-                                        <td class="p-2 border-l">
-                                            <input type="text" value="${cell.subject || ''}" placeholder="Subj" class="w-full text-xs font-bold focus:outline-none" onchange="Actions.updateCell('${cellId}', 'subject', this.value)">
-                                            <input type="text" value="${cell.teacher || ''}" placeholder="Teacher" class="w-full text-[10px] text-slate-400 focus:outline-none" onchange="Actions.updateCell('${cellId}', 'teacher', this.value)">
-                                        </td>
-                                    `;
+                                    const id = `${secId}-${day}-${slot}`.replace(/\s+/g, '_');
+                                    const cell = (data.schedule && data.schedule[id]) || {subject:'', teacher:''};
+                                    return `<td class="p-2 border-l border-slate-50">
+                                        <input class="w-full font-bold focus:text-indigo-600 outline-none" value="${cell.subject}" onchange="Actions.updateCell('${id}','subject',this.value)" placeholder="Subject">
+                                        <input class="w-full text-[10px] text-slate-400 outline-none" value="${cell.teacher}" onchange="Actions.updateCell('${id}','teacher',this.value)" placeholder="Teacher">
+                                    </td>`;
                                 }).join('')}
                             </tr>
                         `).join('')}
@@ -239,131 +207,86 @@
 
             teacher: (data) => `
                 <div class="max-w-4xl mx-auto">
-                    <div class="mb-6 flex justify-between items-center">
-                        <h2 class="text-2xl font-bold">Teacher: ${App.user.name}</h2>
-                        <button onclick="App.route('home')" class="text-slate-500 underline">Logout</button>
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Teacher Portal: ${App.user.name}</h2>
+                        <button onclick="App.route('home')" class="text-slate-400">Logout</button>
                     </div>
-                    <div class="bg-indigo-50 p-3 rounded mb-4 text-xs text-indigo-700">💡 <b>Click</b> to Cancel | <b>Long Press</b> for Notes</div>
-                    <div class="bg-white rounded-xl shadow overflow-hidden grid grid-cols-6 border">
-                        <div class="p-4 bg-slate-50 border-b border-r font-bold text-xs text-slate-400">TIME</div>
-                        ${CONFIG.days.map(d => `<div class="p-4 bg-slate-50 border-b border-r font-bold text-center">${d.substring(0,3)}</div>`).join('')}
+                    <div class="bg-white rounded-xl shadow overflow-hidden border">
+                        <div class="grid grid-cols-6 text-center bg-slate-50 border-b">
+                            <div class="p-4 font-black text-slate-400 text-[10px]">TIME</div>
+                            ${CONFIG.days.map(d=>`<div class="p-4 font-bold text-slate-700">${d.substring(0,3)}</div>`).join('')}
+                        </div>
                         ${CONFIG.slots.map(slot => `
-                            <div class="p-4 border-b border-r bg-slate-50 text-center text-xs font-bold text-slate-400">${slot}</div>
-                            ${CONFIG.days.map(day => {
-                                let matchId = null, matchData = null, matchSecName = null;
-                                if(data.sections) {
-                                    data.sections.forEach(sec => {
-                                        const id = `${sec.id}-${day}-${slot}`.replace(/[.#$/[\]]/g, "_");
-                                        if(data.schedule && data.schedule[id]?.teacher === App.user.name) { 
-                                            matchId = id; 
-                                            matchData = data.schedule[id]; 
-                                            matchSecName = `${sec.year} - ${sec.name}`; 
-                                        }
+                            <div class="grid grid-cols-6 border-b last:border-0 min-h-[80px]">
+                                <div class="p-4 bg-slate-50/50 text-slate-400 text-xs font-bold flex items-center justify-center">${slot}</div>
+                                ${CONFIG.days.map(day => {
+                                    let matchId = null, matchData = null;
+                                    Object.keys(data.schedule || {}).forEach(k => {
+                                        if(data.schedule[k].teacher === App.user.name && k.includes(`${day}-${slot}`)) { matchId = k; matchData = data.schedule[k]; }
                                     });
-                                }
-                                if(!matchId) return `<div class="border-b border-r bg-slate-50/30"></div>`;
-                                const isCancelled = data.cancelled && data.cancelled[matchId];
-                                return `
-                                    <div class="p-2 border-b border-r relative cursor-pointer select-none transition hover:bg-indigo-50 ${isCancelled ? 'cancelled-class' : ''}"
-                                         onmousedown="Interaction.start('${matchId}')" ontouchstart="Interaction.start('${matchId}')"
-                                         onmouseup="Interaction.end()" onmouseleave="Interaction.end()">
-                                        <div class="text-[10px] font-bold text-indigo-500 leading-none mb-1">${matchSecName}</div>
-                                        <div class="text-xs font-bold leading-tight">${matchData.subject}</div>
-                                        ${(data.notes && data.notes[matchId]) ? '<div class="absolute bottom-1 right-1">📝</div>' : ''}
-                                    </div>
-                                `;
-                            }).join('')}
+                                    if(!matchId) return `<div class="border-l border-slate-50"></div>`;
+                                    const isC = data.cancelled && data.cancelled[matchId];
+                                    return `<div class="p-2 border-l border-slate-50 cursor-pointer transition hover:bg-slate-50 ${isC?'cancelled-class':''}" 
+                                                 onmousedown="Interaction.start('${matchId}')" onmouseup="Interaction.end('${matchId}')">
+                                            <div class="text-[10px] font-bold text-indigo-500">${matchId.split('-')[0]}</div>
+                                            <div class="font-bold text-sm">${matchData.subject}</div>
+                                        </div>`;
+                                }).join('')}
+                            </div>
                         `).join('')}
                     </div>
                 </div>`,
 
             student: (data) => {
-                const sKey = `${App.user.sectionId}-${App.user.roll}`.replace(/[.#$/[\]]/g, "_");
-                let next = null, total = 0, attended = 0;
-                
-                CONFIG.days.forEach(day => {
-                    CONFIG.slots.forEach(slot => {
-                        const id = `${App.user.sectionId}-${day}-${slot}`.replace(/[.#$/[\]]/g, "_");
-                        if(data.schedule && data.schedule[id]) {
-                            const status = Time.getStatus(day, slot);
-                            const isCancelled = data.cancelled && data.cancelled[id];
-                            if(status === 'past' && !isCancelled) {
-                                total++;
-                                if(data.attendance && data.attendance[sKey] && data.attendance[sKey][id]) attended++;
-                            }
-                            if(!next && (status === 'active' || status === 'future') && !isCancelled) {
-                                next = { ...data.schedule[id], day, slot };
-                            }
-                        }
-                    });
-                });
-                const pct = total === 0 ? 0 : Math.round((attended/total)*100);
-
+                const sKey = `S-${App.user.sectionId}-${App.user.roll}`.replace(/\s+/g, '_');
                 return `
                 <div class="max-w-6xl mx-auto">
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                        <div>
-                            <h2 class="text-2xl font-bold text-slate-800">Student Portal</h2>
-                            <p class="text-slate-500 font-medium">${App.user.sectionId} • Roll: ${App.user.roll}</p>
+                    <div class="bg-indigo-600 text-white p-8 rounded-3xl shadow-xl mb-8 flex justify-between items-center relative overflow-hidden">
+                        <div class="z-10">
+                            <h2 class="text-3xl font-black mb-1">Student Dashboard</h2>
+                            <p class="opacity-75 font-medium tracking-wide uppercase text-sm">${App.user.sectionId} • Roll No: ${App.user.roll}</p>
                         </div>
-                        <button onclick="App.route('home')" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded-lg text-slate-700 text-sm font-bold transition">Switch Role</button>
+                        <button onclick="App.route('home')" class="z-10 bg-white/20 backdrop-blur-md px-6 py-2 rounded-xl font-bold hover:bg-white/30 transition">Switch User</button>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                        <div class="bg-white p-5 rounded-2xl shadow-sm border-b-4 border-indigo-500">
-                            <div class="text-[10px] uppercase font-black text-slate-400 tracking-wider mb-1">Attendance Rate</div>
-                            <div class="text-3xl font-bold text-slate-800">${pct}%</div>
-                        </div>
-                        ${next ? `
-                        <div class="md:col-span-2 bg-slate-900 text-white p-5 rounded-2xl shadow-lg relative overflow-hidden">
-                            <div class="relative z-10">
-                                <div class="text-[10px] text-indigo-400 font-black tracking-widest mb-1 uppercase">Next Class</div>
-                                <div class="text-xl font-bold">${next.subject}</div>
-                                <div class="text-sm opacity-80">${next.day} at ${next.slot} • ${next.teacher}</div>
-                            </div>
-                        </div>` : ''}
-                    </div>
-
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                         <div class="overflow-x-auto">
-                            <table class="w-full border-collapse">
-                                <thead>
-                                    <tr class="bg-slate-50 border-b border-slate-200">
-                                        <th class="p-4 text-left text-xs font-bold text-slate-400 uppercase w-24">Time</th>
-                                        ${CONFIG.days.map(day => `<th class="p-4 text-center text-xs font-bold text-slate-700 uppercase border-l border-slate-100">${day.substring(0,3)}</th>`).join('')}
+                            <table class="w-full text-left border-collapse">
+                                <thead class="bg-slate-50">
+                                    <tr>
+                                        <th class="p-6 font-black text-slate-400 text-[10px] uppercase w-32 tracking-widest">Time Slot</th>
+                                        ${CONFIG.days.map(d=>`<th class="p-6 font-bold text-slate-800 text-center border-l border-slate-100">${d}</th>`).join('')}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     ${CONFIG.slots.map(slot => `
-                                        <tr class="border-b border-slate-100 last:border-0">
-                                            <td class="p-4 text-xs font-bold text-slate-500 bg-slate-50/50">${slot}</td>
+                                        <tr class="border-t border-slate-100">
+                                            <td class="p-6 font-mono text-sm text-slate-400 bg-slate-50/30 font-bold">${slot}</td>
                                             ${CONFIG.days.map(day => {
-                                                const id = `${App.user.sectionId}-${day}-${slot}`.replace(/[.#$/[\]]/g, "_");
+                                                const id = `${App.user.sectionId}-${day}-${slot}`.replace(/\s+/g, '_');
                                                 const cell = data.schedule && data.schedule[id];
+                                                if(!cell || !cell.subject) return `<td class="p-2 border-l border-slate-50"></td>`;
+                                                
+                                                const isC = data.cancelled && data.cancelled[id];
+                                                const isA = data.attendance && data.attendance[sKey] && data.attendance[sKey][id];
                                                 const status = Time.getStatus(day, slot);
-                                                const isCancelled = data.cancelled && data.cancelled[id];
-                                                const isAttended = data.attendance && data.attendance[sKey] && data.attendance[sKey][id];
-                                                const note = data.notes && data.notes[id];
 
-                                                if (!cell || !cell.subject) return `<td class="p-2 border-l border-slate-50 bg-slate-50/20"></td>`;
-
-                                                return `
-                                                    <td class="p-2 border-l border-slate-100 min-w-[140px]">
-                                                        <div onclick="${status !== 'future' ? `Actions.markAtt('${sKey}','${id}')` : `alert('Cannot mark attendance for future classes')`}"
-                                                             class="p-3 rounded-xl border transition-all cursor-pointer relative
-                                                             ${isCancelled ? 'cancelled-class opacity-60' : ''} 
-                                                             ${status === 'active' ? 'active-slot bg-indigo-50/50 border-indigo-200' : 'bg-white border-transparent hover:border-slate-200'} 
-                                                             ${isAttended ? 'ring-2 ring-green-500 border-green-200 bg-green-50' : ''}">
-                                                            <div class="flex justify-between items-start mb-1">
-                                                                <span class="text-[10px] font-black ${isAttended ? 'text-green-600' : 'text-indigo-500'} uppercase">${isAttended ? 'Present' : (isCancelled ? 'Cancelled' : status)}</span>
-                                                                ${note ? `<button onclick="event.stopPropagation(); alert('Note: ${note}')" class="text-xs">📝</button>` : ''}
-                                                            </div>
-                                                            <div class="font-bold text-slate-800 text-sm leading-tight">${cell.subject}</div>
-                                                            <div class="text-[10px] text-slate-400 font-medium">${cell.teacher}</div>
-                                                            ${isAttended ? `<div class="absolute bottom-1 right-2 text-green-600 font-bold text-xs">✓</div>` : ''}
+                                                return `<td class="p-3 border-l border-slate-100 min-w-[160px]">
+                                                    <div onclick="Actions.markAtt('${sKey}','${id}')" 
+                                                         class="p-4 rounded-2xl border-2 transition-all cursor-pointer relative overflow-hidden group
+                                                         ${isC ? 'cancelled-class border-red-100' : ''} 
+                                                         ${isA ? 'bg-green-50 border-green-500' : 'bg-white border-slate-50 hover:border-indigo-200'}
+                                                         ${status === 'active' && !isA ? 'active-slot bg-indigo-50 border-indigo-500' : ''}">
+                                                        
+                                                        <div class="text-[10px] font-black uppercase mb-2 ${isA ? 'text-green-600' : 'text-indigo-500'}">
+                                                            ${isA ? '✓ ATTENDED' : (isC ? 'Class Cancelled' : status)}
                                                         </div>
-                                                    </td>
-                                                `;
+                                                        <div class="font-black text-slate-800 text-lg leading-tight group-hover:text-indigo-600 transition">${cell.subject}</div>
+                                                        <div class="text-xs text-slate-400 font-medium mt-1">${cell.teacher}</div>
+                                                        
+                                                        ${isA ? '<div class="absolute -right-2 -bottom-2 text-4xl opacity-10 font-black text-green-600 italic">DONE</div>' : ''}
+                                                    </div>
+                                                </td>`;
                                             }).join('')}
                                         </tr>
                                     `).join('')}
@@ -375,21 +298,11 @@
             }
         };
 
+        // --- 5. ACTIONS ---
         const Actions = {
-            registerCollege: () => {
-                const name = prompt("College Name:"); if(!name) return;
-                const pass = prompt("Create Admin Password:");
-                database.ref('colleges/' + name).once('value', s => {
-                    if(s.exists()) return alert("College already exists!");
-                    database.ref('colleges/' + name).set({
-                        password: pass,
-                        sections: [{ id: 'Year-1-CS-A', year: 'Year 1', name: 'CS-A' }],
-                        schedule: {}, cancelled: {}, notes: {}, attendance: {}, user_vault: {}
-                    }).then(() => alert("College Registered!"));
-                });
-            },
             enterCollege: () => {
                 const name = document.getElementById('join-name').value;
+                if(!name) return;
                 database.ref('colleges/' + name).once('value', s => {
                     if(s.exists()) {
                         App.college = name;
@@ -399,133 +312,61 @@
                     } else alert("College not found.");
                 });
             },
+            registerCollege: () => {
+                const n = prompt("New College Name:"); if(!n) return;
+                const p = prompt("Admin Password:");
+                database.ref('colleges/'+n).set({ password: p, sections: [{id:'Year-1-A', year:'Year 1', name:'A'}], schedule:{} }).then(()=>alert("Success!"));
+            },
             logout: () => { localStorage.clear(); location.reload(); },
             loginRole: (role) => {
-                const data = App.collegeData;
                 if(role === 'admin') {
-                    if(prompt("Admin Password:") === data.password) App.route('admin');
-                    else alert("Wrong Password");
-                } 
-                else if(role === 'teacher') {
-                    const n = prompt("Teacher Name:"); if(!n) return;
-                    const userId = `T-${n}`.replace(/[.#$/[\]]/g, "_");
-                    const existingPass = data.user_vault && data.user_vault[userId];
-                    if(!existingPass) {
-                        const newPass = prompt("New Teacher: Set your password:");
-                        if(newPass) { DB.update(`user_vault/${userId}`, newPass); App.user = { name: n }; App.route('teacher'); }
-                    } else if(prompt("Enter password:") === existingPass) { App.user = { name: n }; App.route('teacher'); }
-                } 
-                else if(role === 'student') { Actions.showStudentLoginModal(data); }
-            },
-            showStudentLoginModal: (data) => {
-                const years = [...new Set((data.sections || []).map(s => s.year))];
-                const modalHtml = `
-                    <div id="login-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl fade-in">
-                            <h3 class="text-xl font-bold mb-4">Student Login</h3>
-                            <select id="login-year" class="w-full border p-3 rounded-lg mb-4" onchange="Actions.updateSectionDropdown()">
-                                <option value="">-- Select Year --</option>
-                                ${years.map(y => `<option value="${y}">${y}</option>`).join('')}
-                            </select>
-                            <select id="login-section" class="w-full border p-3 rounded-lg mb-4"><option value="">-- Select Year First --</option></select>
-                            <input id="login-roll" type="number" placeholder="Roll No" class="w-full border p-3 rounded-lg mb-6">
-                            <div class="flex gap-2">
-                                <button onclick="document.getElementById('login-modal').remove()" class="flex-1 py-3 text-slate-500 font-bold">Cancel</button>
-                                <button onclick="Actions.submitStudentLogin()" class="flex-1 bg-indigo-600 text-white py-3 rounded-lg font-bold">Continue</button>
-                            </div>
-                        </div>
-                    </div>`;
-                document.body.insertAdjacentHTML('beforeend', modalHtml);
-            },
-            updateSectionDropdown: () => {
-                const data = App.collegeData;
-                const yr = document.getElementById('login-year').value;
-                const sectionSelect = document.getElementById('login-section');
-                sectionSelect.innerHTML = (data.sections || []).filter(s => s.year === yr).map(s => `<option value="${s.name}">${s.name}</option>`).join('') || '<option value="">-- No Sections --</option>';
-            },
-            submitStudentLogin: () => {
-                const data = App.collegeData;
-                const yr = document.getElementById('login-year').value;
-                const nm = document.getElementById('login-section').value;
-                const roll = document.getElementById('login-roll').value;
-                const sectionId = `${yr}-${nm}`;
-                const userId = `S-${sectionId}-${roll}`.replace(/[.#$/[\]]/g, "_");
-                const existingPass = data.user_vault && data.user_vault[userId];
-
-                if(!existingPass) {
-                    const newPass = prompt("New Student! Set your password:");
-                    if(newPass) { DB.update(`user_vault/${userId}`, newPass); App.user = { sectionId, roll }; document.getElementById('login-modal').remove(); App.route('student'); }
-                } else if(prompt("Enter password:") === existingPass) { App.user = { sectionId, roll }; document.getElementById('login-modal').remove(); App.route('student'); }
-                else alert("Wrong Password");
-            },
-            addSection: () => {
-                const yr = prompt("Year (e.g. Year 1):");
-                const nm = prompt("Section (e.g. CS-A):");
-                if(yr && nm) {
-                    const sections = App.collegeData.sections || [];
-                    sections.push({ id: `${yr}-${nm}`.replace(/\s+/g, '-'), year: yr, name: nm });
-                    DB.update('sections', sections);
+                    if(prompt("Password:") === App.collegeData.password) App.route('admin');
+                } else if(role === 'teacher') {
+                    const n = prompt("Your Name (as entered in schedule):"); if(n) { App.user = {name: n}; App.route('teacher'); }
+                } else if(role === 'student') {
+                    const yr = prompt("Year (e.g., Year 1):");
+                    const sec = prompt("Section (e.g., A):");
+                    const roll = prompt("Roll No:");
+                    if(yr && sec && roll) {
+                        App.user = { sectionId: `${yr}-${sec}`, roll: roll };
+                        localStorage.setItem('active_user', JSON.stringify(App.user));
+                        App.route('student');
+                    }
                 }
             },
-            markAtt: (sKey, cId) => {
-                // Ensure the objects exist before checking property
-                const attendancePath = `attendance/${sKey}/${cId}`;
-                const hasAttended = (App.collegeData.attendance && 
-                                     App.collegeData.attendance[sKey] && 
-                                     App.collegeData.attendance[sKey][cId]);
-                
-                // Toggle value in Firebase
-                DB.update(attendancePath, !hasAttended);
-                // Note: No need to call App.render() here because DB.sync handles it!
+            markAtt: (sKey, id) => {
+                const status = App.collegeData.attendance?.[sKey]?.[id];
+                DB.update(`attendance/${sKey}/${id}`, !status);
             },
-
-            updateCell: (id, field, val) => {
-                DB.update(`schedule/${id}/${field}`, val);
-            },
-
-            // Teacher toggle for cancellation
-            toggleCancel: (id) => {
-                const isCancelled = App.collegeData.cancelled && App.collegeData.cancelled[id];
-                DB.update(`cancelled/${id}`, !isCancelled);
-            },
-
-            // Teacher note addition
-            addNote: (id) => {
-                const note = prompt("Enter Class Note:");
-                if(note !== null) DB.update(`notes/${id}`, note);
+            updateCell: (id, f, v) => DB.update(`schedule/${id}/${f}`, v),
+            addSection: () => {
+                const y = prompt("Year:"); const n = prompt("Section Name:");
+                if(y && n) {
+                    const sects = App.collegeData.sections || [];
+                    sects.push({id: `${y}-${n}`, year: y, name: n});
+                    DB.update('sections', sects);
+                }
             }
         };
 
         const Interaction = {
             timer: null,
-            longPressed: false,
+            long: false,
             start: (id) => {
-                Interaction.longPressed = false;
+                Interaction.long = false;
                 Interaction.timer = setTimeout(() => {
-                    Interaction.longPressed = true;
-                    Actions.addNote(id);
+                    Interaction.long = true;
+                    const note = prompt("Add class note:"); if(note !== null) DB.update(`notes/${id}`, note);
                 }, 700);
             },
             end: (id) => {
-                if(!Interaction.longPressed && Interaction.timer) {
-                    clearTimeout(Interaction.timer);
-                    Actions.toggleCancel(id);
+                clearTimeout(Interaction.timer);
+                if(!Interaction.long) {
+                    const isC = App.collegeData.cancelled?.[id];
+                    DB.update(`cancelled/${id}`, !isC);
                 }
-                Interaction.timer = null;
             }
         };
-
-        // Global Mouse/Touch logic for Teacher clicks (Cancel/Uncancel)
-        document.addEventListener('mouseup', (e) => {
-            const target = e.target.closest('[onmousedown]');
-            if(target && !Interaction.longPressed && Interaction.timer) {
-                clearTimeout(Interaction.timer);
-                const id = target.getAttribute('onmousedown').match(/'(.*?)'/)[1];
-                const isCancelled = App.collegeData.cancelled && App.collegeData.cancelled[id];
-                DB.update(`cancelled/${id}`, !isCancelled);
-            }
-            Interaction.timer = null;
-        });
 
         App.init();
     </script>
