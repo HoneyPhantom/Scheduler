@@ -3,21 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>UniScheduler Pro | Multi-User Secure</title>
+    <title>UniScheduler Pro | Integrated Academic Suite</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
     <style>
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; color: #1e293b; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background: #f8fafc; color: #1e293b; scroll-behavior: smooth; }
         .cancelled-class { background-color: #fee2e2 !important; color: #991b1b !important; position: relative; opacity: 0.7; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         input, textarea, select { outline: none !important; }
         .next-class-pulse { animation: pulse-indigo 2s infinite; }
         @keyframes pulse-indigo { 0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); } 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); } }
+        .hero-gradient { background: radial-gradient(circle at top right, #eef2ff 0%, #f8fafc 50%); }
     </style>
 </head>
-<body>
+<body class="hero-gradient">
 
     <nav class="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-slate-200 px-6 py-4">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
@@ -30,7 +31,7 @@
             <div id="nav-meta" class="hidden flex items-center gap-6">
                 <div id="clock-display" class="font-bold text-sm hidden sm:block text-slate-400">00:00:00</div>
                 <button onclick="Actions.goBack()" class="flex items-center gap-2 bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 px-4 py-2 rounded-xl transition-all font-bold text-xs uppercase tracking-wider">
-                    <span>Exit</span>
+                    <span>Back</span>
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                         <path fill-rule="evenodd" d="M3 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" />
                     </svg>
@@ -63,12 +64,12 @@
         const App = {
             college: localStorage.getItem('active_college'),
             collegeData: null,
-            view: 'gatekeeper',
+            view: localStorage.getItem('active_college') ? 'home' : 'landing',
             user: JSON.parse(localStorage.getItem('active_user') || 'null'),
             activeSection: null,
 
             init() {
-                if(this.college) { this.view = 'home'; this.sync(); }
+                if(this.college) { this.sync(); }
                 setInterval(() => {
                     const el = document.getElementById('clock-display');
                     if(el) el.innerText = new Date().toLocaleTimeString();
@@ -88,11 +89,18 @@
             render() {
                 const root = document.getElementById('app');
                 const nav = document.getElementById('nav-meta');
-                if(this.college) nav.classList.remove('hidden');
-                else nav.classList.add('hidden');
                 
+                // Nav visibility logic
+                if(this.view === 'landing') nav.classList.add('hidden');
+                else nav.classList.remove('hidden');
+
+                if(this.view === 'landing') { root.innerHTML = Views.landing(); return; }
                 if(this.view === 'gatekeeper') { root.innerHTML = Views.gatekeeper(); return; }
-                if(!this.collegeData) { root.innerHTML = '<div class="mt-20 text-center animate-pulse text-slate-400">Loading...</div>'; return; }
+                
+                if(!this.collegeData && this.view !== 'landing') { 
+                    root.innerHTML = '<div class="mt-20 text-center animate-pulse text-slate-400 font-bold">Connecting to Institution...</div>'; 
+                    return; 
+                }
                 
                 switch(this.view) {
                     case 'home': root.innerHTML = Views.home(); break;
@@ -124,9 +132,51 @@
         };
 
         const Views = {
+            landing: () => `
+                <div class="min-h-[85vh] flex flex-col items-center justify-center text-center px-4 py-12">
+                    <div class="mb-6 inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full text-[10px] font-black tracking-widest uppercase">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-indigo-600"></span>
+                        </span>
+                        Live Academic Network
+                    </div>
+                    
+                    <h1 class="text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-tight max-w-4xl">
+                        Your campus, <br/>
+                        <span class="text-indigo-600">synchronized.</span>
+                    </h1>
+                    
+                    <p class="text-slate-500 text-lg md:text-xl max-w-2xl mb-12 font-medium">
+                        The ultimate scheduler for modern institutions. Track attendance, broadcast updates, and manage faculty timelines in one unified workspace.
+                    </p>
+
+                    <div class="flex flex-col sm:flex-row gap-4 mb-24 w-full justify-center">
+                        <button onclick="App.route('gatekeeper')" class="bg-indigo-600 text-white px-10 py-5 rounded-2xl font-black shadow-xl shadow-indigo-200 hover:bg-indigo-700 hover:-translate-y-1 transition-all text-lg">
+                            Enter Portal
+                        </button>
+                        <button onclick="window.scrollTo(0, 1000)" class="bg-white border-2 border-slate-100 text-slate-600 px-10 py-5 rounded-2xl font-black hover:bg-slate-50 transition-all text-lg">
+                            Learn More
+                        </button>
+                    </div>
+
+                    <div class="grid md:grid-cols-3 gap-8 max-w-6xl w-full">
+                        ${Views.featCard('⚡', 'Live Schedules', 'Instant synchronization for class cancellations and room shifts.')}
+                        ${Views.featCard('📊', 'Smart Attendance', 'Automated student presence tracking with visual progress reports.')}
+                        ${Views.featCard('🔒', 'Role Security', 'Dedicated, password-protected dashboards for Admin, Teachers, and Students.')}
+                    </div>
+                </div>`,
+
+            featCard: (icon, title, desc) => `
+                <div class="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm text-left hover:shadow-md transition-shadow">
+                    <div class="text-3xl mb-4">${icon}</div>
+                    <h4 class="font-black text-xl mb-2">${title}</h4>
+                    <p class="text-slate-400 text-sm font-medium leading-relaxed">${desc}</p>
+                </div>`,
+
             gatekeeper: () => `
                 <div class="max-w-md mx-auto mt-20 bg-white p-10 rounded-3xl shadow-2xl border border-slate-100">
-                    <h2 class="text-3xl font-black mb-2 text-indigo-600">Institution Portal</h2>
+                    <h2 class="text-3xl font-black mb-2 text-indigo-600">Institution Login</h2>
                     <p class="text-slate-500 mb-8 font-medium text-sm italic">Enter institutional name to connect.</p>
                     <input id="c-input" type="text" placeholder="College Name" class="w-full bg-slate-50 border-2 border-slate-100 p-4 rounded-2xl mb-4 focus:border-indigo-500 transition-all font-bold">
                     <button onclick="Actions.enter()" class="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all">CONNECT</button>
@@ -272,17 +322,17 @@
                     <div class="w-full lg:w-72 shrink-0">
                         <div class="flex justify-between items-center mb-6">
                             <h2 class="text-xl font-black">Sections</h2>
-                            <button onclick="Actions.addSection()" class="bg-indigo-600 text-white w-8 h-8 rounded-lg">+</button>
+                            <button onclick="Actions.addSection()" class="bg-indigo-600 text-white w-8 h-8 rounded-lg font-black">+</button>
                         </div>
                         <div class="space-y-3">
                             ${(App.collegeData.sections || []).map(s => `
-                                <div onclick="App.activeSection='${s.id}'; App.render()" class="p-4 rounded-2xl border-2 transition-all cursor-pointer ${App.activeSection === s.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-transparent hover:border-slate-200'}">
+                                <div onclick="App.activeSection='${s.id}'; App.render()" class="p-4 rounded-2xl border-2 transition-all cursor-pointer ${App.activeSection === s.id ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-transparent hover:border-slate-200'}">
                                     <div class="font-bold">${s.name} <span class="text-[10px] opacity-60">(${s.year})</span></div>
                                 </div>`).join('')}
                         </div>
                     </div>
                     <div class="grow bg-white rounded-3xl shadow-xl border border-slate-100 p-6 overflow-hidden">
-                        ${App.activeSection ? Views.editorTable() : `<div class="p-20 text-center text-slate-300 italic">Select a section to begin.</div>`}
+                        ${App.activeSection ? Views.editorTable() : `<div class="p-20 text-center text-slate-300 italic">Select a section to begin configuring the timetable.</div>`}
                     </div>
                 </div>`,
 
@@ -299,8 +349,8 @@
                                         const cell = (App.collegeData.schedule && App.collegeData.schedule[id]) || {subject:'', teacher:'', note:''};
                                         return `<td>
                                             <div class="bg-slate-50 p-2 m-1 rounded-xl min-w-[140px]">
-                                                <input onchange="Actions.updateCell('${id}', 'subject', this.value)" value="${cell.subject}" placeholder="Sub" class="w-full bg-transparent text-xs font-bold">
-                                                <input onchange="Actions.updateCell('${id}', 'teacher', this.value)" value="${cell.teacher}" placeholder="Prof" class="w-full bg-transparent text-[9px] text-slate-400">
+                                                <input onchange="Actions.updateCell('${id}', 'subject', this.value)" value="${cell.subject}" placeholder="Subject" class="w-full bg-transparent text-xs font-bold">
+                                                <input onchange="Actions.updateCell('${id}', 'teacher', this.value)" value="${cell.teacher}" placeholder="Professor" class="w-full bg-transparent text-[9px] text-slate-400">
                                             </div>
                                         </td>`;
                                     }).join('')}
@@ -314,6 +364,7 @@
             goBack() {
                 if (['admin', 'teacher', 'student'].includes(App.view)) App.route('home');
                 else if (App.view === 'home') { localStorage.removeItem('active_college'); App.college = null; App.route('gatekeeper'); }
+                else if (App.view === 'gatekeeper') App.route('landing');
                 else location.reload();
             },
             enter() {
@@ -321,22 +372,23 @@
                 if(!n) return;
                 db.ref('colleges/' + n).once('value', s => {
                     if(s.exists()) { App.college = n; localStorage.setItem('active_college', n); App.sync(); App.route('home'); }
-                    else alert("Not registered.");
+                    else alert("College not found. Please register first.");
                 });
             },
             registerCollege() {
-                const n = prompt("Institution Name:"), p = prompt("Admin Password:");
+                const n = prompt("Unique Institution Name:"), p = prompt("Set Admin Password:");
                 if(n && p) {
-                    db.ref('colleges/'+n).set({ password: p, sections: [], schedule: {} }).then(() => alert("Created!"));
+                    db.ref('colleges/'+n).set({ password: p, sections: [], schedule: {} }).then(() => alert("Institution Registered Successfully!"));
                 }
             },
             handleRole(role) {
-                if(role === 'admin') { if(prompt("Admin Password:") === App.collegeData.password) App.route('admin'); }
+                if(role === 'admin') { if(prompt("Enter Admin Access Key:") === App.collegeData.password) App.route('admin'); }
                 else if (role === 'teacher_login') this.secureUserLogin('teacher_login');
                 else if (role === 'student_login') this.showStudentSectionFirst();
             },
             showStudentSectionFirst() {
                 const years = [...new Set((App.collegeData.sections || []).map(s => s.year))];
+                if(years.length === 0) { alert("Admin hasn't created sections yet."); return; }
                 const modal = `
                     <div id="modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur z-[100] flex items-center justify-center p-4">
                         <div class="bg-white rounded-[2rem] p-8 w-full max-w-sm shadow-2xl">
@@ -344,6 +396,7 @@
                             <select id="s-year" class="w-full bg-slate-50 border-2 p-4 rounded-xl font-bold mb-4" onchange="Actions.filterSecs()"><option value="">Select Year</option>${years.map(y => `<option value="${y}">${y}</option>`).join('')}</select>
                             <select id="s-sec" class="w-full bg-slate-50 border-2 p-4 rounded-xl font-bold mb-6"><option value="">Select Section</option></select>
                             <button onclick="Actions.proceedToStudentLogin()" class="w-full bg-indigo-600 text-white py-4 rounded-xl font-black shadow-lg">NEXT</button>
+                            <button onclick="document.getElementById('modal').remove()" class="w-full text-slate-400 mt-4 text-xs font-bold">CANCEL</button>
                         </div>
                     </div>`;
                 document.body.insertAdjacentHTML('beforeend', modal);
@@ -361,20 +414,20 @@
             },
             secureUserLogin(role, context = null) {
                 const isT = role === 'teacher_login';
-                const id = prompt(isT ? "Name:" : "Roll No:");
+                const id = prompt(isT ? "Professor Name:" : "Student Roll No:");
                 if(!id) return;
                 const safeId = id.replace(/\s+/g, '_').replace(/[.#$\[\]]/g, '');
                 const path = isT ? `teachers/${safeId}` : `students/${safeId}`;
                 db.ref(`colleges/${App.college}/${path}`).once('value', snap => {
                     const user = snap.val();
                     if(!user) {
-                        const pass = prompt("Set password:");
-                        if(pass) { db.ref(`colleges/${App.college}/${path}`).set({ password: pass }); alert("Login again."); }
+                        const pass = prompt("Account not found. Create a password to register:");
+                        if(pass) { db.ref(`colleges/${App.college}/${path}`).set({ password: pass }); alert("Registration complete. Login again."); }
                     } else {
-                        if(prompt("Password:") === user.password) {
+                        if(prompt("Enter Account Password:") === user.password) {
                             if(isT) { App.user = {name: id}; App.route('teacher'); }
                             else { App.user = { year: context.y, section: context.s, roll: id, sectionId: context.sectionId }; App.route('student'); }
-                        } else alert("Wrong.");
+                        } else alert("Invalid Password.");
                     }
                 });
             },
@@ -389,7 +442,7 @@
             },
             updateCell(id, field, val) { db.ref(`colleges/${App.college}/schedule/${id}/${field}`).set(val); },
             addSection() {
-                const y = prompt("Year:"), n = prompt("Section:");
+                const y = prompt("Academic Year:"), n = prompt("Section Name:");
                 if(y && n) {
                     const sects = App.collegeData.sections || [];
                     sects.push({ id: `${y}-${n}`.replace(/[.#$\[\]]/g, ''), year: y, name: n });
