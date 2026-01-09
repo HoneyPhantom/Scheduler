@@ -382,7 +382,7 @@
                 }
             },
             handleRole(role) {
-                if(role === 'admin') { if(prompt("Enter Admin Access Key:") === App.collegeData.password) App.route('admin'); }
+                if(role === 'admin') { if(prompt("Enter Admin Access Key: (i.e Your college password)") === App.collegeData.password) App.route('admin'); }
                 else if (role === 'teacher_login') this.secureUserLogin('teacher_login');
                 else if (role === 'student_login') this.showStudentSectionFirst();
             },
