@@ -64,25 +64,25 @@
             slots: ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00']
         };
 
-        // --- 3. DATABASE WRAPPER (FIREBASE) ---
+        // --- UPDATED DATABASE WRAPPER ---
         const DB = {
-            // Live Data Listener
             sync: (collegeName) => {
                 if(!collegeName) return;
+                // 'on' creates a permanent bridge. When Firebase changes, App.render() runs automatically.
                 database.ref('colleges/' + collegeName).on('value', (snapshot) => {
-                    App.collegeData = snapshot.val();
-                    App.render();
+                    const val = snapshot.val();
+                    if (val) {
+                        App.collegeData = val;
+                        App.render(); 
+                    }
+                }, (error) => {
+                    console.error("Firebase Sync Error:", error);
                 });
             },
-            // One-time Fetch
-            getCollegeOnce: async (name) => {
-                const s = await database.ref('colleges/' + name).once('value');
-                return s.val();
-            },
-            // Update Helper
             update: (path, val) => {
                 if(!App.college) return;
-                database.ref(`colleges/${App.college}/${path}`).set(val);
+                // Using .update() or .set() ensures the cloud is the "Source of Truth"
+                return database.ref(`colleges/${App.college}/${path}`).set(val);
             }
         };
 
@@ -467,12 +467,32 @@
                     DB.update('sections', sections);
                 }
             },
+            markAtt: (sKey, cId) => {
+                // Ensure the objects exist before checking property
+                const attendancePath = `attendance/${sKey}/${cId}`;
+                const hasAttended = (App.collegeData.attendance && 
+                                     App.collegeData.attendance[sKey] && 
+                                     App.collegeData.attendance[sKey][cId]);
+                
+                // Toggle value in Firebase
+                DB.update(attendancePath, !hasAttended);
+                // Note: No need to call App.render() here because DB.sync handles it!
+            },
+
             updateCell: (id, field, val) => {
                 DB.update(`schedule/${id}/${field}`, val);
             },
-            markAtt: (sKey, cId) => {
-                const current = (App.collegeData.attendance && App.collegeData.attendance[sKey] && App.collegeData.attendance[sKey][cId]) || false;
-                DB.update(`attendance/${sKey}/${cId}`, !current);
+
+            // Teacher toggle for cancellation
+            toggleCancel: (id) => {
+                const isCancelled = App.collegeData.cancelled && App.collegeData.cancelled[id];
+                DB.update(`cancelled/${id}`, !isCancelled);
+            },
+
+            // Teacher note addition
+            addNote: (id) => {
+                const note = prompt("Enter Class Note:");
+                if(note !== null) DB.update(`notes/${id}`, note);
             }
         };
 
@@ -483,11 +503,16 @@
                 Interaction.longPressed = false;
                 Interaction.timer = setTimeout(() => {
                     Interaction.longPressed = true;
-                    const note = prompt("Enter Class Note:");
-                    if(note !== null) DB.update(`notes/${id}`, note);
+                    Actions.addNote(id);
                 }, 700);
             },
-            end: () => clearTimeout(Interaction.timer)
+            end: (id) => {
+                if(!Interaction.longPressed && Interaction.timer) {
+                    clearTimeout(Interaction.timer);
+                    Actions.toggleCancel(id);
+                }
+                Interaction.timer = null;
+            }
         };
 
         // Global Mouse/Touch logic for Teacher clicks (Cancel/Uncancel)
